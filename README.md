@@ -1,6 +1,6 @@
 # Cyronime for Android
 
-Aplikasi Android **native** (Kotlin + Jetpack Compose) untuk [Cyronime](https://kamael.vercel.app).
+Aplikasi Android **native** (Kotlin + Jetpack Compose) untuk [Cyronime](https://cyronime.web.id).
 Konsumsi **backend dan API yang sama dengan Web** — tidak ada backend streaming kedua, tidak ada API sumber yang disentuh langsung.
 
 Repo backend/Web: [Rendyzzx/Kamael](https://github.com/Rendyzzx/Kamael) — kontrak API lengkap ada di `ANDROID_SETUP.md` di repo tersebut.
@@ -49,7 +49,7 @@ ataau buka folder ini di Android Studio (Hedgehog+) → Sync → Run.
 
 ### 3. Konfigurasi
 
-- URL backend: `WEB_URL` di `app/build.gradle` (default `https://kamael.vercel.app`).
+- URL backend: `WEB_URL` di `app/build.gradle` (default `https://cyronime.web.id`).
 - `versionCode`/`versionName` di `app/build.gradle` harus naik tiap rilis — `versionName` dibandingkan dengan `APP_LATEST_VERSION`/`APP_MINIMUM_VERSION` di backend.
 
 ## Struktur
@@ -79,7 +79,7 @@ app/src/main/java/id/my/id/cyronime/app/
 ## Deep link
 
 - `cyronime://anime/{slug}`, `cyronime://donghua/{slug}`, `cyronime://anime/watch/{episodeId}` — dipakai payload FCM.
-- `https://kamael.vercel.app/anime/...` (App Links, `autoVerify`) — aktif setelah `assetlinks.json` di-host di domain (lihat bagian App Links di `ANDROID_SETUP.md` repo Kamael).
+- `https://cyronime.web.id/anime/...` (App Links, `autoVerify`) — aktif setelah `assetlinks.json` di-host di domain (lihat bagian App Links di `ANDROID_SETUP.md` repo Kamael).
 
 ## Catatan jujur (keterbatasan v1)
 

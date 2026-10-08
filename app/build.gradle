@@ -15,7 +15,7 @@ android {
         versionCode 1
         versionName "1.0.0"
         // URL backend Cyronime (sama dengan Web) — ubah kalau ada domain sendiri.
-        buildConfigField "String", "WEB_URL", "\"https://kamael.vercel.app\""
+        buildConfigField "String", "WEB_URL", "\"https://cyronime.web.id\""
     }
 
     buildTypes {

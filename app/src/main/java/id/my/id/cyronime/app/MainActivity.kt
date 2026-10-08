@@ -75,7 +75,7 @@ class MainActivity : ComponentActivity() {
         handleDeepLink(intent)
     }
 
-    /** cyronime://anime/{slug} | cyronime://anime/watch/{episodeId} | https://kamael.vercel.app/... */
+    /** cyronime://anime/{slug} | cyronime://anime/watch/{episodeId} | https://cyronime.web.id/... */
     private fun handleDeepLink(intent: Intent?) {
         val data = intent?.data ?: return
         val host = data.host ?: return
