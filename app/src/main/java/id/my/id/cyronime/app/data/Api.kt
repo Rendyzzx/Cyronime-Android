@@ -7,6 +7,7 @@ import id.my.id.cyronime.app.Prefs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Cookie
+import okhttp3.FormBody
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
 import okhttp3.MediaType.Companion.toMediaType
@@ -47,6 +48,40 @@ object Api {
     fun clearSession() {
         CookieManager.getInstance().removeAllCookies(null)
         CookieManager.getInstance().flush()
+    }
+
+    /**
+     * Login NATIVE: tukar Google ID Token dengan session Auth.js lewat
+     * provider "google-idtoken" di backend. Cookie session yang di-set
+     * server tersimpan otomatis di CookieManager (WebViewCookieJar),
+     * jadi dipakai bersama OkHttp maupun WebView embed video.
+     */
+    suspend fun nativeLogin(idToken: String): Me {
+        val ua = "Cyronime-Android/" + BuildConfig.VERSION_NAME
+        withContext(Dispatchers.IO) {
+            // 1) ambil CSRF token Auth.js
+            val csrfReq = Request.Builder().url(base + "/api/auth/csrf").header("User-Agent", ua).build()
+            val csrf = client.newCall(csrfReq).execute().use { res ->
+                if (!res.isSuccessful) throw HttpError(res.code, "HTTP ${res.code}")
+                JSONObject(res.body?.string() ?: "{}").optString("csrfToken")
+            }
+            if (csrf.isBlank()) throw HttpError(0, "CSRF tidak tersedia")
+
+            // 2) POST callback credentials (form-urlencoded, sesuai Auth.js)
+            val form = FormBody.Builder()
+                .add("csrfToken", csrf)
+                .add("idToken", idToken)
+                .add("callbackUrl", "/")
+                .add("json", "true")
+                .build()
+            val loginReq = Request.Builder().url(base + "/api/auth/callback/credentials")
+                .header("User-Agent", ua).post(form).build()
+            client.newCall(loginReq).execute().use { res ->
+                if (!res.isSuccessful) throw HttpError(res.code, "HTTP ${res.code}")
+            }
+        }
+        // 3) verifikasi session: /api/me harus mengenali user
+        return me() ?: throw HttpError(0, "Session tidak terbentuk")
     }
 
     /* ---------- HTTP core ---------- */
