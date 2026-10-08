@@ -30,8 +30,8 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="cyronime.web.id" android:pathPrefix="/anime" />
-                <data android:scheme="https" android:host="cyronime.web.id" android:pathPrefix="/donghua" />
+                <data android:scheme="https" android:host="kamael.vercel.app" android:pathPrefix="/anime" />
+                <data android:scheme="https" android:host="kamael.vercel.app" android:pathPrefix="/donghua" />
             </intent-filter>
 
             <!-- Custom scheme dari payload FCM -->

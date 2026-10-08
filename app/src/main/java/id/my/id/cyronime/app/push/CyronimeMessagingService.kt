@@ -81,7 +81,7 @@ class CyronimeMessagingService : FirebaseMessagingService() {
         }
     }
 
-    /** https://cyronime.web.id/anime/x -> cyronime://anime/x (pastikan buka app, bukan browser). */
+    /** https://kamael.vercel.app/anime/x -> cyronime://anime/x (pastikan buka app, bukan browser). */
     private fun toAppScheme(link: String?): String {
         if (link.isNullOrBlank()) return "cyronime://anime"
         return try {
