@@ -8,40 +8,48 @@ import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.LiveTv
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import id.my.id.cyronime.app.Prefs
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.unit.dp
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.background
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
@@ -50,15 +58,20 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import coil.compose.AsyncImage
 import id.my.id.cyronime.app.data.Api
 import id.my.id.cyronime.app.data.AppVersion
+import id.my.id.cyronime.app.data.Me
 import id.my.id.cyronime.app.data.SystemStatus
+import id.my.id.cyronime.app.ui.Cy
 import id.my.id.cyronime.app.ui.CyronimeTheme
 import id.my.id.cyronime.app.ui.DetailScreen
 import id.my.id.cyronime.app.ui.HomeScreen
 import id.my.id.cyronime.app.ui.LibraryScreen
 import id.my.id.cyronime.app.ui.LoginScreen
 import id.my.id.cyronime.app.ui.OnboardingScreen
+import id.my.id.cyronime.app.ui.PortalListScreen
+import id.my.id.cyronime.app.ui.ProfileScreen
 import id.my.id.cyronime.app.ui.MaintenanceScreen
 import id.my.id.cyronime.app.ui.SearchScreen
 import id.my.id.cyronime.app.ui.SettingsScreen
@@ -116,7 +129,9 @@ class MainActivity : ComponentActivity() {
 
 /**
  * Root UI: cek maintenance & versi saat startup / kembali foreground
- * (bukan polling), lalu tampilkan navigasi utama.
+ * (bukan polling), lalu tampilkan navigasi utama. Struktur nav meniru web:
+ * bottom nav = Home, portal (Anime/Donghua), Cari, Profil; history &
+ * favorites dibuka dari Profil (seperti halaman /profile web).
  */
 @Composable
 fun CyronimeApp(initialDeepLink: String?) {
@@ -128,6 +143,8 @@ fun CyronimeApp(initialDeepLink: String?) {
     var forceVersion by remember { mutableStateOf<AppVersion?>(null) }
     var softVersion by remember { mutableStateOf<AppVersion?>(null) }
     var sessionActive by remember { mutableStateOf(Api.hasSession()) }
+    var portalAnime by remember { mutableStateOf(Prefs.portal(context) == "anime") }
+    var me by remember { mutableStateOf<Me?>(null) }
 
     suspend fun checkSystem() {
         try {
@@ -152,9 +169,18 @@ fun CyronimeApp(initialDeepLink: String?) {
         }
     }
 
+    suspend fun loadMe() {
+        if (!Api.hasSession()) return
+        try {
+            me = Api.me()
+        } catch (_: Exception) {
+        }
+    }
+
     LaunchedEffect(Unit) {
         checkSystem()
         checkVersion()
+        loadMe()
     }
 
     // Cek maintenance saat app kembali ke foreground — tanpa polling.
@@ -229,20 +255,26 @@ fun CyronimeApp(initialDeepLink: String?) {
         )
     }
 
-    val start = if (sessionActive && Prefs.onboardingDone(context)) "home"
-        else if (sessionActive) "onboarding" else "onboarding"
+    val start = if (sessionActive && Prefs.onboardingDone(context)) "home" else "onboarding"
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route
     val showBottomNav = currentRoute == "home" || currentRoute == "search" ||
-        currentRoute == "library" || currentRoute == "settings"
+        currentRoute == "profile" || currentRoute == "portal/{type}"
 
     Scaffold(
         bottomBar = {
             if (showBottomNav) {
                 CyBottomBar(
                     current = currentRoute,
-                    isAnime = Prefs.portal(context) == "anime",
-                    onTab = { navController.goTab(it) }
+                    portalAnime = portalAnime,
+                    me = me,
+                    onTab = { route ->
+                        if (route == "portal") {
+                            navController.goTab(if (portalAnime) "portal/anime" else "portal/donghua")
+                        } else {
+                            navController.goTab(route)
+                        }
+                    }
                 )
             }
         }
@@ -257,11 +289,16 @@ fun CyronimeApp(initialDeepLink: String?) {
                 OnboardingScreen(
                     loggedIn = sessionActive,
                     loginContent = { done ->
-                        LoginScreen(onDone = { sessionActive = true; done() })
+                        LoginScreen(onDone = {
+                            sessionActive = true
+                            scope.launch { loadMe() }
+                            done()
+                        })
                     },
                     onPick = { portal ->
                         Prefs.setPortal(context, portal)
                         Prefs.setOnboardingDone(context, true)
+                        portalAnime = portal == "anime"
                         navController.navigate("home") { popUpTo("onboarding") { inclusive = true } }
                     }
                 )
@@ -269,17 +306,38 @@ fun CyronimeApp(initialDeepLink: String?) {
             composable("login") {
                 LoginScreen(onDone = {
                     sessionActive = true
+                    scope.launch { loadMe() }
                     navController.navigate("home") { popUpTo("login") { inclusive = true } }
                 })
             }
-            composable("home") { HomeScreen(navController) }
+            composable("home") {
+                HomeScreen(navController)
+                // Portal bisa berubah dari dalam Home (PortalSwitch).
+                LaunchedEffect(Unit) { portalAnime = Prefs.portal(context) == "anime" }
+            }
+            composable("portal/{type}") { entry ->
+                val type = entry.arguments?.getString("type") ?: "anime"
+                PortalListScreen(navController, type)
+                LaunchedEffect(type) { portalAnime = type == "anime" }
+            }
             composable("search") { SearchScreen(navController) }
-            composable("library") { LibraryScreen(navController) }
+            composable("profile") {
+                ProfileScreen(navController, onLoggedOut = {
+                    sessionActive = false
+                    me = null
+                    navController.navigate("onboarding") { popUpTo(0) }
+                })
+            }
             composable("settings") {
                 SettingsScreen(navController, onLoggedOut = {
                     sessionActive = false
+                    me = null
                     navController.navigate("onboarding") { popUpTo(0) }
                 })
+            }
+            composable("library/{mode}") { entry ->
+                val mode = entry.arguments?.getString("mode") ?: "history"
+                LibraryScreen(navController, mode)
             }
             composable("detail/{type}/{slug}") { entry ->
                 val type = entry.arguments?.getString("type") ?: "anime"
@@ -303,60 +361,127 @@ private fun NavHostController.goTab(route: String) {
     }
 }
 
-
-/** Bottom nav meniru Web: 68dp, latar --surface, garis atas tipis, label hanya di item aktif. */
+/**
+ * Bottom nav meniru web (BottomNav.tsx): 68dp, latar --surface, garis atas
+ * 1px --line, label hanya pada item aktif, item portal mengikuti preferensi
+ * (Anime ATAU Donghua), item profil memakai avatar bila tersedia.
+ */
 @Composable
-private fun CyBottomBar(current: String?, isAnime: Boolean, onTab: (String) -> Unit) {
-    val items = listOf(
-        Triple("home", "Home", androidx.compose.material.icons.Icons.Filled.Home),
-        Triple("search", "Cari", androidx.compose.material.icons.Icons.Filled.Search),
-        Triple("library", "Tontonanku", androidx.compose.material.icons.Icons.Filled.PlayArrow),
-        Triple("settings", "Profil", androidx.compose.material.icons.Icons.Filled.Person)
-    )
-    androidx.compose.foundation.layout.Column(
-        androidx.compose.ui.Modifier.background(id.my.id.cyronime.app.ui.Cy.Surface)
-    ) {
-        androidx.compose.foundation.layout.Box(
-            androidx.compose.ui.Modifier
+private fun CyBottomBar(
+    current: String?,
+    portalAnime: Boolean,
+    me: Me?,
+    onTab: (String) -> Unit
+) {
+    Column(Modifier.background(Cy.Surface)) {
+        Box(
+            Modifier
                 .fillMaxWidth()
                 .height(1.dp)
-                .background(id.my.id.cyronime.app.ui.Cy.Line)
+                .background(Cy.Line)
         )
-        androidx.compose.foundation.layout.Row(
-            androidx.compose.ui.Modifier
+        Row(
+            Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
                 .height(68.dp),
-            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            items.forEach { (route, label, icon) ->
-                val active = current == route
-                androidx.compose.foundation.layout.Column(
-                    androidx.compose.ui.Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .clickable(
-                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                            indication = null
-                        ) { onTab(route) },
-                    horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
-                    verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center
-                ) {
-                    androidx.compose.material3.Icon(
-                        icon, contentDescription = label,
-                        tint = if (active) id.my.id.cyronime.app.ui.Cy.Text else id.my.id.cyronime.app.ui.Cy.Text2,
-                        modifier = androidx.compose.ui.Modifier.size(24.dp)
+            // Home
+            BottomItem("home", "Home", Icons.Filled.Home, current == "home", Modifier.weight(1f), onTab)
+            // Portal (Anime / Donghua sesuai preferensi)
+            BottomItem(
+                "portal",
+                if (portalAnime) "Anime" else "Donghua",
+                if (portalAnime) Icons.Filled.LiveTv else Icons.Filled.AutoAwesome,
+                current == "portal/{type}",
+                Modifier.weight(1f),
+                onTab
+            )
+            // Cari
+            BottomItem("search", "Cari", Icons.Filled.Search, current == "search", Modifier.weight(1f), onTab)
+            // Profil (avatar bila ada, ala web)
+            Column(
+                Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { onTab("profile") },
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                val active = current == "profile"
+                if (!me?.image.isNullOrBlank()) {
+                    AsyncImage(
+                        model = me!!.image,
+                        contentDescription = "Profil",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(30.dp)
+                            .clip(RoundedCornerShape(Cy.RadiusChip))
+                            .background(Cy.Surface2)
                     )
-                    if (active) {
-                        Text(
-                            label,
-                            color = id.my.id.cyronime.app.ui.Cy.Text,
-                            fontSize = 11.sp,
-                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                } else {
+                    Box(
+                        Modifier
+                            .size(30.dp)
+                            .clip(RoundedCornerShape(Cy.RadiusChip))
+                            .background(Cy.Surface2),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Filled.Person, "Profil",
+                            tint = if (active) Cy.Text else Cy.Text2,
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 }
+                if (active) {
+                    Text(
+                        "Profil",
+                        color = Cy.Text,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun BottomItem(
+    route: String,
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    active: Boolean,
+    modifier: Modifier = Modifier,
+    onTab: (String) -> Unit
+) {
+    Column(
+        modifier
+            .fillMaxHeight()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { onTab(route) },
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            icon, label,
+            tint = if (active) Cy.Text else Cy.Text2,
+            modifier = Modifier.size(24.dp)
+        )
+        if (active) {
+            Text(
+                label,
+                color = Cy.Text,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold
+            )
         }
     }
 }
