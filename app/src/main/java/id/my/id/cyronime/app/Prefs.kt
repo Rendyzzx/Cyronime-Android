@@ -12,6 +12,8 @@ object Prefs {
     private const val KEY_DEVICE_ID = "device_id"
     private const val KEY_FCM_TOKEN = "fcm_token"
     private const val KEY_SESSION_DONE = "session_done"
+    private const val KEY_PORTAL = "portal"
+    private const val KEY_ONB_DONE = "onboarding_done"
 
     private fun sp(ctx: Context) = ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
@@ -35,4 +37,11 @@ object Prefs {
     fun setSessionDone(ctx: Context, done: Boolean) {
         sp(ctx).edit().putBoolean(KEY_SESSION_DONE, done).apply()
     }
+
+    /** Portal aktif ("anime" | "donghua") — sama konsepnya dengan Web. */
+    fun portal(ctx: Context): String = sp(ctx).getString(KEY_PORTAL, "anime") ?: "anime"
+    fun setPortal(ctx: Context, v: String) { sp(ctx).edit().putString(KEY_PORTAL, v).apply() }
+
+    fun onboardingDone(ctx: Context): Boolean = sp(ctx).getBoolean(KEY_ONB_DONE, false)
+    fun setOnboardingDone(ctx: Context, v: Boolean) { sp(ctx).edit().putBoolean(KEY_ONB_DONE, v).apply() }
 }

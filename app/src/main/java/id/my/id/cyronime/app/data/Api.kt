@@ -74,9 +74,14 @@ object Api {
                 .add("callbackUrl", "/")
                 .add("json", "true")
                 .build()
-            val loginReq = Request.Builder().url(base + "/api/auth/callback/credentials")
+            val loginReq = Request.Builder().url(base + "/api/auth/callback/google-idtoken")
                 .header("User-Agent", ua).post(form).build()
             client.newCall(loginReq).execute().use { res ->
+                val finalUrl = res.request.url.toString()
+                if (finalUrl.contains("error=")) {
+                    val code = res.request.url.queryParameter("error") ?: "unknown"
+                    throw HttpError(401, "Ditolak server ($code)")
+                }
                 if (!res.isSuccessful) throw HttpError(res.code, "HTTP ${res.code}")
             }
         }

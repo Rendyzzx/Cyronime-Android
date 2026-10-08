@@ -23,6 +23,17 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import id.my.id.cyronime.app.Prefs
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.dp
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,6 +58,7 @@ import id.my.id.cyronime.app.ui.DetailScreen
 import id.my.id.cyronime.app.ui.HomeScreen
 import id.my.id.cyronime.app.ui.LibraryScreen
 import id.my.id.cyronime.app.ui.LoginScreen
+import id.my.id.cyronime.app.ui.OnboardingScreen
 import id.my.id.cyronime.app.ui.MaintenanceScreen
 import id.my.id.cyronime.app.ui.SearchScreen
 import id.my.id.cyronime.app.ui.SettingsScreen
@@ -217,7 +229,8 @@ fun CyronimeApp(initialDeepLink: String?) {
         )
     }
 
-    val start = if (sessionActive) "home" else "login"
+    val start = if (sessionActive && Prefs.onboardingDone(context)) "home"
+        else if (sessionActive) "onboarding" else "onboarding"
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route
     val showBottomNav = currentRoute == "home" || currentRoute == "search" ||
@@ -226,32 +239,11 @@ fun CyronimeApp(initialDeepLink: String?) {
     Scaffold(
         bottomBar = {
             if (showBottomNav) {
-                NavigationBar {
-                    NavigationBarItem(
-                        selected = currentRoute == "home",
-                        onClick = { navController.goTab("home") },
-                        icon = { Icon(Icons.Filled.Home, contentDescription = "Home") },
-                        label = { Text("Home") }
-                    )
-                    NavigationBarItem(
-                        selected = currentRoute == "search",
-                        onClick = { navController.goTab("search") },
-                        icon = { Icon(Icons.Filled.Search, contentDescription = "Cari") },
-                        label = { Text("Cari") }
-                    )
-                    NavigationBarItem(
-                        selected = currentRoute == "library",
-                        onClick = { navController.goTab("library") },
-                        icon = { Icon(Icons.Filled.PlayArrow, contentDescription = "Tontonanku") },
-                        label = { Text("Tontonanku") }
-                    )
-                    NavigationBarItem(
-                        selected = currentRoute == "settings",
-                        onClick = { navController.goTab("settings") },
-                        icon = { Icon(Icons.Filled.Settings, contentDescription = "Settings") },
-                        label = { Text("Settings") }
-                    )
-                }
+                CyBottomBar(
+                    current = currentRoute,
+                    isAnime = Prefs.portal(context) == "anime",
+                    onTab = { navController.goTab(it) }
+                )
             }
         }
     ) { padding ->
@@ -260,6 +252,20 @@ fun CyronimeApp(initialDeepLink: String?) {
             startDestination = start,
             modifier = Modifier.padding(padding)
         ) {
+            composable("onboarding") {
+                // Sama seperti Web: Splash > Disclaimer > Airin > Carousel > LOGIN > Pilih Tontonan.
+                OnboardingScreen(
+                    loggedIn = sessionActive,
+                    loginContent = { done ->
+                        LoginScreen(onDone = { sessionActive = true; done() })
+                    },
+                    onPick = { portal ->
+                        Prefs.setPortal(context, portal)
+                        Prefs.setOnboardingDone(context, true)
+                        navController.navigate("home") { popUpTo("onboarding") { inclusive = true } }
+                    }
+                )
+            }
             composable("login") {
                 LoginScreen(onDone = {
                     sessionActive = true
@@ -272,7 +278,7 @@ fun CyronimeApp(initialDeepLink: String?) {
             composable("settings") {
                 SettingsScreen(navController, onLoggedOut = {
                     sessionActive = false
-                    navController.navigate("login") { popUpTo(0) }
+                    navController.navigate("onboarding") { popUpTo(0) }
                 })
             }
             composable("detail/{type}/{slug}") { entry ->
@@ -294,5 +300,63 @@ private fun NavHostController.goTab(route: String) {
         popUpTo(graph.startDestinationId) { saveState = true }
         launchSingleTop = true
         restoreState = true
+    }
+}
+
+
+/** Bottom nav meniru Web: 68dp, latar --surface, garis atas tipis, label hanya di item aktif. */
+@Composable
+private fun CyBottomBar(current: String?, isAnime: Boolean, onTab: (String) -> Unit) {
+    val items = listOf(
+        Triple("home", "Home", androidx.compose.material.icons.Icons.Filled.Home),
+        Triple("search", "Cari", androidx.compose.material.icons.Icons.Filled.Search),
+        Triple("library", "Tontonanku", androidx.compose.material.icons.Icons.Filled.PlayArrow),
+        Triple("settings", "Profil", androidx.compose.material.icons.Icons.Filled.Person)
+    )
+    androidx.compose.foundation.layout.Column(
+        androidx.compose.ui.Modifier.background(id.my.id.cyronime.app.ui.Cy.Surface)
+    ) {
+        androidx.compose.foundation.layout.Box(
+            androidx.compose.ui.Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(id.my.id.cyronime.app.ui.Cy.Line)
+        )
+        androidx.compose.foundation.layout.Row(
+            androidx.compose.ui.Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .height(68.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+        ) {
+            items.forEach { (route, label, icon) ->
+                val active = current == route
+                androidx.compose.foundation.layout.Column(
+                    androidx.compose.ui.Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clickable(
+                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                            indication = null
+                        ) { onTab(route) },
+                    horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+                    verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center
+                ) {
+                    androidx.compose.material3.Icon(
+                        icon, contentDescription = label,
+                        tint = if (active) id.my.id.cyronime.app.ui.Cy.Text else id.my.id.cyronime.app.ui.Cy.Text2,
+                        modifier = androidx.compose.ui.Modifier.size(24.dp)
+                    )
+                    if (active) {
+                        Text(
+                            label,
+                            color = id.my.id.cyronime.app.ui.Cy.Text,
+                            fontSize = 11.sp,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
     }
 }

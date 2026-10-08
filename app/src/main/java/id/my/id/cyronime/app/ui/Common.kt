@@ -13,6 +13,17 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.LiveTv
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.SwapVert
+import androidx.compose.material3.Icon
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -72,56 +83,126 @@ fun errorMessage(err: Exception): String = when (err) {
     else -> "Terjadi kesalahan. Coba lagi."
 }
 
-/* ---------- komponen kartu ---------- */
+/* ---------- komponen kartu (meniru AnimeCard.tsx di Web) ---------- */
 
+/**
+ * Poster 3:4 radius 18, chip rating kanan-atas (bintang peach), chip
+ * "Eps N" kiri-bawah, judul 14sp semibold 2 baris di bawah poster.
+ */
 @Composable
 fun PosterCard(
     poster: String?,
     title: String,
     subtitle: String?,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    score: String? = null,
+    episodes: String? = null
 ) {
-    Column(
-        Modifier
-            .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
-    ) {
-        Column {
-            Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).background(MaterialTheme.colorScheme.surfaceVariant)) {
-                AsyncImage(
-                    model = absPoster(poster),
-                    contentDescription = title,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-            Column(Modifier.padding(8.dp)) {
-                Text(
-                    title,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                if (subtitle != null) {
-                    Text(
-                        subtitle,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1
-                    )
+    Column(Modifier.clickable(onClick = onClick)) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .aspectRatio(3f / 4f)
+                .clip(RoundedCornerShape(Cy.RadiusCard))
+                .background(Cy.Surface)
+        ) {
+            AsyncImage(
+                model = absPoster(poster),
+                contentDescription = title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+            if (!score.isNullOrBlank()) {
+                Row(
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
+                        .height(24.dp)
+                        .clip(RoundedCornerShape(Cy.RadiusChip))
+                        .background(Cy.Overlay)
+                        .padding(horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Filled.Star, null, tint = Cy.Peach, modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text(score, color = Cy.Text, fontSize = 13.sp, fontWeight = FontWeight.Medium)
                 }
             }
+            val chip = episodes?.takeIf { it.isNotBlank() }?.let { "Eps $it" } ?: subtitle?.takeIf { it.isNotBlank() }
+            if (chip != null) {
+                Text(
+                    chip,
+                    color = Cy.Text,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(6.dp)
+                        .widthIn(max = 150.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Cy.Overlay)
+                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                )
+            }
+        }
+        Text(
+            title,
+            color = Cy.Text,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            lineHeight = 18.sp,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 8.dp)
+        )
+    }
+}
+
+/** Header section ala SectionHeader.tsx: judul kiri, link tersier peach kanan. */
+@Composable
+fun SectionTitle(text: String, action: String? = null, onAction: (() -> Unit)? = null) {
+    Row(
+        Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 24.dp, bottom = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.Bottom
+    ) {
+        Text(text, color = Cy.Text, fontSize = 17.sp, fontWeight = FontWeight.Medium)
+        if (action != null && onAction != null) {
+            Text(
+                action,
+                color = Cy.Peach,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                textDecoration = TextDecoration.Underline,
+                modifier = Modifier.clickable(onClick = onAction)
+            )
         }
     }
 }
 
+/** Chip portal ala PortalSwitch.tsx (Anime / Donghua) — tinggi 44, radius 8. */
 @Composable
-fun SectionTitle(text: String) {
-    Text(
-        text,
-        style = MaterialTheme.typography.titleMedium,
-        modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 8.dp)
-    )
+fun PortalChip(isAnime: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .height(44.dp)
+            .clip(RoundedCornerShape(Cy.RadiusChip))
+            .background(Cy.Surface)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            if (isAnime) Icons.Filled.LiveTv else Icons.Filled.AutoAwesome,
+            null, tint = Cy.Text2, modifier = Modifier.size(20.dp)
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(if (isAnime) "Anime" else "Donghua", color = Cy.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.width(6.dp))
+        Icon(Icons.Filled.SwapVert, null, tint = Cy.Text2, modifier = Modifier.size(18.dp))
+    }
 }
 
 /* ---------- layar maintenance & update (overlay penuh) ---------- */

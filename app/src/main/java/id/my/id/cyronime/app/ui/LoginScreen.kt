@@ -14,6 +14,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -99,59 +108,64 @@ fun LoginScreen(onDone: () -> Unit) {
                 busy = false
             } catch (e: Exception) {
                 val msg = e.message ?: ""
-                error = if (msg.contains("401")) "Login ditolak server. Coba lagi."
-                else "Gagal terhubung: " + (msg.ifBlank { e.javaClass.simpleName })
+                error = "Login gagal: " + (msg.ifBlank { e.javaClass.simpleName })
                 busy = false
             }
         }
     }
 
     Column(
-        Modifier.fillMaxSize().padding(24.dp),
+        Modifier.fillMaxSize().background(Cy.Navy).padding(horizontal = 28.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text("Cyronime", style = MaterialTheme.typography.displaySmall)
-        Spacer(Modifier.height(4.dp))
+        androidx.compose.foundation.Image(
+            painter = androidx.compose.ui.res.painterResource(id.my.id.cyronime.app.R.drawable.airin),
+            contentDescription = "Airin",
+            modifier = Modifier.size(180.dp)
+        )
+        Spacer(Modifier.height(20.dp))
+        Text("Masuk ke Cyronime", color = Cy.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(8.dp))
         Text(
-            "Anime & Donghua",
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            "Akun yang sama dengan Cyronime Web. History, favorit, dan progress tontonan langsung tersinkron.",
+            color = Cy.Text2, fontSize = 14.sp, lineHeight = 22.sp, textAlign = TextAlign.Center,
+            modifier = Modifier.widthIn(max = 320.dp)
         )
         Spacer(Modifier.height(32.dp))
 
         if (!loggedIn) {
-            Button(
-                onClick = { signIn() },
-                enabled = !busy,
-                modifier = Modifier.fillMaxWidth().height(52.dp)
+            Row(
+                Modifier.fillMaxWidth().height(52.dp)
+                    .clip(RoundedCornerShape(Cy.RadiusMd))
+                    .background(if (busy) Cy.Surface2 else Cy.Accent)
+                    .clickable(enabled = !busy) { signIn() },
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 if (busy) {
-                    CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+                    CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp, color = Cy.Text)
                     Spacer(Modifier.size(10.dp))
                 }
-                Text(if (busy) "Memproses…" else "Lanjutkan dengan Google")
+                Text(if (busy) "Memproses..." else "Lanjutkan dengan Google",
+                    color = Cy.Text, fontSize = 17.sp, fontWeight = FontWeight.Bold)
             }
-            Spacer(Modifier.height(12.dp))
-            Text(
-                "Akun yang sama dengan Cyronime Web — history, favorit, dan " +
-                    "progress langsung tersinkron.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center
-            )
         } else {
-            Text("Sudah login.", style = MaterialTheme.typography.bodyMedium)
+            Text("Sudah login.", color = Cy.Text2, fontSize = 14.sp)
             Spacer(Modifier.height(16.dp))
-            OutlinedButton(onClick = { onDone() }) { Text("Lanjut menonton") }
+            Box(
+                Modifier.height(52.dp).clip(RoundedCornerShape(Cy.RadiusMd)).background(Cy.Accent)
+                    .clickable { onDone() }.padding(horizontal = 28.dp),
+                contentAlignment = Alignment.Center
+            ) { Text("Lanjut menonton", color = Cy.Text, fontSize = 17.sp, fontWeight = FontWeight.Bold) }
         }
 
         if (error != null) {
             Spacer(Modifier.height(20.dp))
             Text(
                 error ?: "",
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodySmall,
+                color = Cy.Peach,
+                fontSize = 13.sp,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth()
             )

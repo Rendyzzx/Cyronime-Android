@@ -1,5 +1,6 @@
 package id.my.id.cyronime.app.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -37,6 +38,7 @@ import id.my.id.cyronime.app.data.AnimeItem
 import id.my.id.cyronime.app.data.Api
 import id.my.id.cyronime.app.data.DonghuaItem
 import id.my.id.cyronime.app.data.WatchProgress
+import id.my.id.cyronime.app.Prefs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -54,6 +56,8 @@ fun HomeScreen(nav: NavController) {
     var animeHasNext by remember { mutableStateOf(false) }
     var donghua by remember { mutableStateOf<List<DonghuaItem>>(emptyList()) }
     var animePage by remember { mutableStateOf(1) }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    var isAnime by remember { mutableStateOf(Prefs.portal(ctx) == "anime") }
 
     fun load(reset: Boolean) {
         val page = if (reset) 1 else animePage + 1
@@ -92,11 +96,24 @@ fun HomeScreen(nav: NavController) {
             load(reset = true)
         })
         else -> LazyColumn(Modifier.fillMaxSize()) {
+            item {
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Cyronime", color = Cy.Text, style = MaterialTheme.typography.titleLarge)
+                    PortalChip(isAnime = isAnime, onClick = {
+                        isAnime = !isAnime
+                        Prefs.setPortal(ctx, if (isAnime) "anime" else "donghua")
+                    })
+                }
+            }
             if (progress.isNotEmpty()) {
                 item {
                     SectionTitle("Lanjut Nonton")
                     LazyRow(
-                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(progress) { p ->
@@ -108,34 +125,33 @@ fun HomeScreen(nav: NavController) {
                 }
             }
 
-            item { SectionTitle("Anime Ongoing") }
-            item {
+            if (isAnime) item { SectionTitle("Anime Ongoing") }
+            if (isAnime) item {
                 // baris manual — bukan grid nested, supaya scroll tunggal stabil
                 Column(
-                    Modifier.padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    Modifier.padding(horizontal = 14.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    anime.chunked(3).forEach { row ->
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    anime.chunked(2).forEach { row ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             row.forEach { a ->
                                 Column(Modifier.weight(1f)) {
                                     PosterCard(
                                         poster = a.poster,
                                         title = a.title,
-                                        subtitle = listOfNotNull(
-                                            a.status,
-                                            if (a.episodes != null) "${a.episodes} eps" else null
-                                        ).joinToString(" • "),
+                                        subtitle = a.status,
+                                        score = a.score,
+                                        episodes = a.episodes?.toString(),
                                         onClick = { nav.navigate("detail/anime/${a.animeId}") }
                                     )
                                 }
                             }
-                            repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                            repeat(2 - row.size) { Spacer(Modifier.weight(1f)) }
                         }
                     }
                 }
             }
-            if (animeHasNext) {
+            if (isAnime && animeHasNext) {
                 item {
                     TextButton(
                         onClick = { load(reset = false) },
@@ -144,14 +160,14 @@ fun HomeScreen(nav: NavController) {
                 }
             }
 
-            item { SectionTitle("Donghua Terbaru") }
-            item {
+            if (!isAnime) item { SectionTitle("Donghua Terbaru") }
+            if (!isAnime) item {
                 Column(
-                    Modifier.padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    Modifier.padding(horizontal = 14.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    donghua.chunked(3).forEach { row ->
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    donghua.chunked(2).forEach { row ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             row.forEach { d ->
                                 Column(Modifier.weight(1f)) {
                                     PosterCard(
@@ -162,7 +178,7 @@ fun HomeScreen(nav: NavController) {
                                     )
                                 }
                             }
-                            repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                            repeat(2 - row.size) { Spacer(Modifier.weight(1f)) }
                         }
                     }
                 }
@@ -176,8 +192,9 @@ fun HomeScreen(nav: NavController) {
 private fun ContinueCard(p: WatchProgress, onClick: () -> Unit) {
     Row(
         Modifier
-            .width(240.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .width(250.dp)
+            .clip(RoundedCornerShape(Cy.RadiusMd))
+            .background(Cy.Surface)
             .clickable(onClick = onClick)
             .padding(8.dp),
         verticalAlignment = Alignment.CenterVertically
