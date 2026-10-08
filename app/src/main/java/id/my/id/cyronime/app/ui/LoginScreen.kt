@@ -1,76 +1,142 @@
 package id.my.id.cyronime.app.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.Button
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.draw.clip
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.background
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import id.my.id.cyronime.app.data.Api
-import id.my.id.cyronime.app.data.Me
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
+import androidx.compose.ui.unit.sp
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.ApiException
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.GetCredentialException
-import com.google.android.libraries.identity.googleid.GetGoogleIdOption
-import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import id.my.id.cyronime.app.R
+import id.my.id.cyronime.app.data.Api
+import id.my.id.cyronime.app.data.Me
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 /**
- * Login NATIVE (tanpa WebView): Google Sign-In via Android Credential
- * Manager (GetGoogleIdOption). App mendapatkan Google ID Token, lalu
- * dikirim ke backend (/api/auth/callback/credentials, provider
- * "google-idtoken") yang memverifikasi token di server dan menerbitkan
- * session Auth.js yang SAMA dengan login Web (cookie session-token
- * mendar di CookieManager, dipakai OkHttp & WebView embed).
+ * Login NATIVE (tanpa WebView). Dua jalur, dua-duanya menuju backend yang sama
+ * (/api/auth/callback/google-idtoken, provider "google-idtoken"):
  *
- * Identitas konsisten: backend memakai Google `sub` — history, favorit,
- * dan progress Web/Android akun yang sama.
+ * 1. UTAMA: Credential Manager (GetGoogleIdOption) — sheet akun bawaan Android.
+ * 2. FALLBACK OTOMATIS: Google Sign-In lama (play-services-auth).
+ *
+ * Kenapa fallback: di beberapa perangkat (terutama Xiaomi/MIUI dan beberapa
+ * versi Play Services) ada bug sistem: user SUDAH memilih akun di sheet,
+ * tetapi API mengembalikan GetCredentialCancellationException seolah user
+ * menutup sheet — login diam-diam gagal tanpa error (bug Okt 2026 di HP
+ * owner). Saat "cancellation" diterima, app otomatis beralih ke jalur 2.
+ * Identitas dua-duanya sama (Google sub) — session pun sama dengan Web.
  */
 @Composable
 fun LoginScreen(onDone: () -> Unit) {
     val context = LocalContext.current
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var status by remember { mutableStateOf<String?>(null) }
     var loggedIn by remember { mutableStateOf(Api.hasSession()) }
 
+    /** Kirim ID token ke backend, buat session, lalu selesai. */
+    fun completeWithToken(idToken: String) {
+        CoroutineScope(Dispatchers.Main).launch {
+            try {
+                val me: Me = Api.nativeLogin(idToken)
+                loggedIn = true
+                busy = false
+                onDone()
+            } catch (e: Exception) {
+                error = "Login gagal: " + ((e.message ?: "").ifBlank { e.javaClass.simpleName }) +
+                    " [" + e.javaClass.simpleName + "]"
+                busy = false
+            }
+        }
+    }
+
+    val compatLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        busy = false
+        try {
+            val account = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+                .getResult(ApiException::class.java)
+            val idToken = account?.idToken
+            if (idToken.isNullOrBlank()) {
+                error = "Google tidak mengirim token (mode kompatibel)."
+            } else {
+                busy = true
+                completeWithToken(idToken)
+            }
+        } catch (e: ApiException) {
+            // 12501 = user benar-benar menutup pilihan akun -> bukan error.
+            if (e.statusCode != 12501) {
+                error = "Mode kompatibel gagal [" + e.statusCode + "] " + (e.message ?: "")
+            }
+        } catch (e: Exception) {
+            error = "Mode kompatibel gagal: " + (e.message ?: e.javaClass.simpleName)
+        }
+    }
+
+    /** Jalur 2: Google Sign-In lama — stabil di perangkat yang menutup sheet. */
+    fun signInCompat() {
+        busy = true
+        error = null
+        val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestIdToken(id.my.id.cyronime.app.BuildConfig.WEB_CLIENT_ID)
+            .requestEmail()
+            .build()
+        try {
+            compatLauncher.launch(GoogleSignIn.getClient(context, gso).signInIntent)
+        } catch (e: Exception) {
+            busy = false
+            error = "Mode kompatibel tidak tersedia: " + (e.message ?: e.javaClass.simpleName)
+        }
+    }
+
+    /** Jalur 1: Credential Manager sheet. */
     fun signIn() {
         if (busy) return
         busy = true
         error = null
+        status = null
 
         val credentialManager = CredentialManager.create(context)
         val googleOption = GetGoogleIdOption.Builder()
-            // Web client (public, bukan rahasia) — audience ID token.
             .setServerClientId(id.my.id.cyronime.app.BuildConfig.WEB_CLIENT_ID)
             .setFilterByAuthorizedAccounts(false)
             .setAutoSelectEnabled(false)
@@ -92,20 +158,20 @@ fun LoginScreen(onDone: () -> Unit) {
                     busy = false
                     return@launch
                 }
-                // Session Auth.js diterbitkan backend; cookie tersimpan di CookieManager.
-                val me: Me = Api.nativeLogin(idToken)
-                loggedIn = true
-                busy = false
-                onDone()
+                completeWithToken(idToken)
             } catch (e: GetCredentialCancellationException) {
-                // Pengguna menutup sheet — bukan error.
-                busy = false
+                // Bug perangkat: pilih akun sukses tapi sistem laporkan "cancel"
+                // (umum di Xiaomi/MIUI & sebagian versi Play Services). Coba jalur 2.
+                status = "Perangkat menutup pilihan akun. Mencoba mode kompatibel..."
+                signInCompat()
             } catch (e: GetCredentialException) {
-                error =
-                    "Login Google gagal [" + e.javaClass.simpleName + "] " + (e.message ?: "")
-                busy = false
+                // Beberapa perangkat juga melaporkan kegagalan sheet sebagai error
+                // umum — coba jalur 2 sekali sebelum menyerah.
+                status = "Sheet akun gagal (" + e.javaClass.simpleName + "). Mencoba mode kompatibel..."
+                signInCompat()
             } catch (e: Exception) {
-                error = "Login gagal: " + ((e.message ?: "").ifBlank { e.javaClass.simpleName }) + " [" + e.javaClass.simpleName + "]"
+                error = "Login gagal: " + ((e.message ?: "").ifBlank { e.javaClass.simpleName }) +
+                    " [" + e.javaClass.simpleName + "]"
                 busy = false
             }
         }
@@ -116,8 +182,8 @@ fun LoginScreen(onDone: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        androidx.compose.foundation.Image(
-            painter = androidx.compose.ui.res.painterResource(id.my.id.cyronime.app.R.drawable.airin),
+        Image(
+            painter = painterResource(R.drawable.airin),
             contentDescription = "Airin",
             modifier = Modifier.size(180.dp)
         )
@@ -147,6 +213,10 @@ fun LoginScreen(onDone: () -> Unit) {
                 Text(if (busy) "Memproses..." else "Lanjutkan dengan Google",
                     color = Cy.Text, fontSize = 17.sp, fontWeight = FontWeight.Bold)
             }
+            Spacer(Modifier.height(12.dp))
+            androidx.compose.material3.TextButton(onClick = { signInCompat() }) {
+                Text("Pakai mode kompatibel", color = Cy.Text2, fontSize = 13.sp)
+            }
         } else {
             Text("Sudah login.", color = Cy.Text2, fontSize = 14.sp)
             Spacer(Modifier.height(16.dp))
@@ -157,6 +227,11 @@ fun LoginScreen(onDone: () -> Unit) {
             ) { Text("Lanjut menonton", color = Cy.Text, fontSize = 17.sp, fontWeight = FontWeight.Bold) }
         }
 
+        if (status != null) {
+            Spacer(Modifier.height(16.dp))
+            Text(status ?: "", color = Cy.Text2, fontSize = 13.sp, textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth())
+        }
         if (error != null) {
             Spacer(Modifier.height(20.dp))
             Text(
