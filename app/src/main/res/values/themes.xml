@@ -1,0 +1,8 @@
+<resources>
+    <!-- Tema sistem (UI penuh digambar Compose) — navy senada Web -->
+    <style name="Theme.Cyronime" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/navy</item>
+        <item name="android:statusBarColor">@color/navy</item>
+        <item name="android:navigationBarColor">@color/navy</item>
+    </style>
+</resources>
