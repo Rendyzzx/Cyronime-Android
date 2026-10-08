@@ -26,7 +26,7 @@ android {
         // URL backend Cyronime (sama dengan Web) — ubah kalau ada domain sendiri.
         buildConfigField "String", "WEB_URL", "\"https://cyronime.web.id\""
         // Web OAuth client (public, bukan rahasia) — serverClientId Google Sign-In native.
-        buildConfigField "String", "WEB_CLIENT_ID", "\"479442842025-ku4c4bbn238idoke95l2h7icjuhfemd2\""
+        buildConfigField "String", "WEB_CLIENT_ID", "\"479442842025-ku4c4bbn238idoke95l2h7icjuhfemd2.apps.googleusercontent.com\""
     }
 
     signingConfigs {
