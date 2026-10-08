@@ -42,7 +42,7 @@ object Api {
 
     fun hasSession(): Boolean {
         val cookies = CookieManager.getInstance().getCookie(base) ?: return false
-        return cookies.contains("session-token")
+        return cookies.contains("session-token")  // cocok juga utk "__Secure-authjs.session-token"
     }
 
     fun clearSession() {
@@ -83,10 +83,23 @@ object Api {
                     throw HttpError(401, "Ditolak server ($code)")
                 }
                 if (!res.isSuccessful) throw HttpError(res.code, "HTTP ${res.code}")
+                // Bukti: apakah server benar-benar mengirim cookie sesi?
+                val setCookies = res.headers("Set-Cookie")
+                val gotSession = setCookies.any { it.contains("session-token") }
+                if (!gotSession) {
+                    throw HttpError(0, "Server tidak mengirim cookie sesi (HTTP ${res.code}, " +
+                        "${setCookies.size} cookie)")
+                }
             }
         }
-        // 3) verifikasi session: /api/me harus mengenali user
-        return me() ?: throw HttpError(0, "Session tidak terbentuk")
+        // 3) cookie harus benar-benar tersimpan di CookieManager
+        if (!hasSession()) throw HttpError(0, "Cookie sesi gagal disimpan di perangkat")
+        // 4) verifikasi session: /api/me harus mengenali user
+        return try {
+            me() ?: throw HttpError(0, "Session tidak terbentuk")
+        } catch (e: HttpError) {
+            throw HttpError(e.code, "Sesi ditolak server saat verifikasi (HTTP ${e.code})")
+        }
     }
 
     /* ---------- HTTP core ---------- */
@@ -315,10 +328,29 @@ class WebViewCookieJar : CookieJar {
     override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
         for (c in cookies) {
             try {
-                cm.setCookie(url.toString(), "${c.name}=${c.value}")
+                // Pertahankan SEMUA atribut. Cookie Auth.js "__Secure-authjs.session-token"
+                // WAJIB Secure + Path=/; tanpa itu CookieManager menolaknya dan sesi tidak
+                // pernah terbentuk (login tampak berhasil tapi langsung kembali ke awal).
+                val sb = StringBuilder()
+                sb.append(c.name).append('=').append(c.value)
+                sb.append("; Path=").append(if (c.path.isNotEmpty()) c.path else "/")
+                if (c.persistent) {
+                    sb.append("; Expires=").append(
+                        java.text.SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss 'GMT'", java.util.Locale.US)
+                            .apply { timeZone = java.util.TimeZone.getTimeZone("GMT") }
+                            .format(java.util.Date(c.expiresAt))
+                    )
+                }
+                if (c.secure) sb.append("; Secure")
+                if (c.httpOnly) sb.append("; HttpOnly")
+                sb.append("; SameSite=Lax")
+                // Host-only cookie: JANGAN set Domain. Cookie domain-wide: set Domain.
+                if (!c.hostOnly) sb.append("; Domain=").append(c.domain)
+                cm.setCookie(url.toString(), sb.toString())
             } catch (_: Exception) {
                 // abaikan
             }
         }
+        cm.flush()
     }
 }

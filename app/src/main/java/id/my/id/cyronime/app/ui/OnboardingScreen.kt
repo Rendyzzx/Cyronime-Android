@@ -77,6 +77,8 @@ fun OnboardingScreen(
     var step by remember { mutableStateOf(if (loggedIn) Step.Pick else Step.Splash) }
     var slide by remember { mutableIntStateOf(0) }
     var needLogin by remember { mutableStateOf(false) }
+    var justLoggedIn by remember { mutableStateOf(false) }
+    val isIn = loggedIn || justLoggedIn
 
     LaunchedEffect(step) {
         if (step == Step.Splash) { delay(1800); step = Step.Disclaimer }
@@ -87,14 +89,14 @@ fun OnboardingScreen(
             Step.Carousel -> if (slide > 0) slide-- else step = Step.Intro
             Step.Intro -> step = Step.Disclaimer
             Step.Declined -> step = Step.Disclaimer
-            Step.Pick -> if (!loggedIn) needLogin = true
+            Step.Pick -> if (!isIn) needLogin = true
             else -> {}
         }
     }
 
     Box(Modifier.fillMaxSize().background(Cy.Navy)) {
-        if (needLogin && !loggedIn) {
-            loginContent { needLogin = false; step = Step.Pick }
+        if (needLogin && !isIn) {
+            loginContent { justLoggedIn = true; needLogin = false; step = Step.Pick }
             return@Box
         }
         AnimatedContent(targetState = step, label = "onb") { s ->
@@ -111,9 +113,9 @@ fun OnboardingScreen(
                     onBack = { if (slide > 0) slide-- else step = Step.Intro },
                     onNext = {
                         if (slide < SLIDES.lastIndex) slide++
-                        else if (loggedIn) step = Step.Pick else needLogin = true
+                        else if (isIn) step = Step.Pick else needLogin = true
                     },
-                    onSkip = { if (loggedIn) step = Step.Pick else needLogin = true },
+                    onSkip = { if (isIn) step = Step.Pick else needLogin = true },
                     onDot = { slide = it }
                 )
                 Step.Pick -> Pick(onPick)
