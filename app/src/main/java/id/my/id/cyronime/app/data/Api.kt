@@ -152,10 +152,10 @@ object Api {
         val d = o.optJSONArray("donghua") ?: JSONArray()
         return SearchResults(
             (0 until a.length()).mapNotNull { i ->
-                a.optJSONObject(it)?.let { it.optString("title") to it.optString("animeId") }
+                a.optJSONObject(i)?.let { it.optString("title") to it.optString("animeId") }
             },
             (0 until d.length()).mapNotNull { i ->
-                d.optJSONObject(it)?.let { it.optString("title") to it.optString("slug") }
+                d.optJSONObject(i)?.let { it.optString("title") to it.optString("slug") }
             }
         )
     }
