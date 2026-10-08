@@ -21,12 +21,12 @@ android {
         applicationId "id.my.id.cyronime.app"
         minSdk 24
         targetSdk 34
-        versionCode 6
-        versionName "1.2.3"
+        versionCode 7
+        versionName "1.2.4"
         // URL backend Cyronime (sama dengan Web) — ubah kalau ada domain sendiri.
         buildConfigField "String", "WEB_URL", "\"https://cyronime.web.id\""
         // Web OAuth client (public, bukan rahasia) — serverClientId Google Sign-In native.
-        buildConfigField "String", "WEB_CLIENT_ID", "\"305129943646-vd126kh59h632nmitjukmj6kun189cr2.apps.googleusercontent.com\""
+        buildConfigField "String", "WEB_CLIENT_ID", "\"479442842025-ku4c4bbn238idoke95l2h7icjuhfemd2\""
     }
 
     signingConfigs {
