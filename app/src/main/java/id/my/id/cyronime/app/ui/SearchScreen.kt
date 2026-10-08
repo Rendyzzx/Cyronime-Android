@@ -25,29 +25,33 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
-import id.my.id.cyronime.app.data.Api
-import id.my.id.cyronime.app.data.SearchResults
+import id.my.id.cyronime.app.data.AnimeItem
+import id.my.id.cyronime.app.data.DonghuaItem
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * Search ala /search web: search box dengan debounce 500ms, hasil dipisah
- * Anime / Donghua. Kontrak /api/search Android hanya mengirim title + id
- * (tanpa poster), jadi hasil dirender baris teks ala dropdown SearchBox.
+ * Search meniru /search web persis: SearchBox (debounce 500ms), heading
+ * "Hasil pencarian: {q}" dengan query berwarna aksen + jumlah hasil, lalu
+ * grid poster 3 kolom per kategori (AnimeCard / DonghuaCard). Data dari
+ * /api/search yang kini mengirim field kartu lengkap.
  */
 @Composable
 fun SearchScreen(nav: NavController) {
     var query by rememberSaveable { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    var results by remember { mutableStateOf<SearchResults?>(null) }
+    var results by remember { mutableStateOf<HomeApi.SearchFull?>(null) }
     var searchedFor by remember { mutableStateOf<String?>(null) }
 
     fun doSearch() {
@@ -57,7 +61,7 @@ fun SearchScreen(nav: NavController) {
         error = null
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                results = Api.search(q)
+                results = HomeApi.searchFull(q)
                 searchedFor = q
                 loading = false
             } catch (err: Exception) {
@@ -109,32 +113,66 @@ fun SearchScreen(nav: NavController) {
                 )
             }
             r != null && q != null -> {
+                // Heading ala web: "Hasil pencarian: {q}" + jumlah hasil
                 item {
                     Column(Modifier.padding(horizontal = 16.dp)) {
-                        Text("Hasil pencarian: $q", color = Cy.Text, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            buildAnnotatedString {
+                                append("Hasil pencarian: ")
+                                withStyle(SpanStyle(color = Cy.Accent, fontWeight = FontWeight.Bold)) {
+                                    append(q)
+                                }
+                            },
+                            color = Cy.Text,
+                            fontSize = 18.sp, fontWeight = FontWeight.Bold
+                        )
                         Text(
                             "${r.anime.size} anime, ${r.donghua.size} donghua",
-                            color = Cy.Text2, fontSize = 14.sp
+                            color = Cy.Text2, fontSize = 14.sp,
+                            modifier = Modifier.padding(top = 4.dp)
                         )
                     }
                 }
-                if (r.anime.isNotEmpty()) {
-                    item { SectionTitle("Anime") }
-                    items(r.anime, key = { "a-${it.second}" }) { (title, animeId) ->
-                        ResultRow(title) { nav.navigate("detail/anime/$animeId") }
-                    }
+                // Section Anime — grid 3 kolom ala AnimeCard
+                item { SectionTitle("Anime") }
+                if (r.anime.isEmpty()) {
+                    item { EmptyPanel("Tidak ada anime yang cocok.") }
                 } else {
-                    item { SectionTitle("Anime") }
-                    item { EmptyNote("Tidak ada anime yang cocok.") }
+                    items(r.anime.chunked(3), key = { it.first().animeId }) { row ->
+                        PosterGridRow(
+                            count = row.size,
+                            content = { i ->
+                                val a = row[i]
+                                PosterCard(
+                                    poster = a.poster,
+                                    title = a.title,
+                                    score = a.score,
+                                    bottomChip = a.episodes?.let { "Eps $it" },
+                                    onClick = { nav.navigate("detail/anime/${a.animeId}") }
+                                )
+                            }
+                        )
+                    }
                 }
-                if (r.donghua.isNotEmpty()) {
-                    item { SectionTitle("Donghua") }
-                    items(r.donghua, key = { "d-${it.second}" }) { (title, slug) ->
-                        ResultRow(title) { nav.navigate("detail/donghua/$slug") }
-                    }
+                // Section Donghua — grid 3 kolom ala DonghuaCard
+                item { SectionTitle("Donghua") }
+                if (r.donghua.isEmpty()) {
+                    item { EmptyPanel("Tidak ada donghua yang cocok.") }
                 } else {
-                    item { SectionTitle("Donghua") }
-                    item { EmptyNote("Tidak ada donghua yang cocok.") }
+                    items(r.donghua.chunked(3), key = { it.first().slug }) { row ->
+                        PosterGridRow(
+                            count = row.size,
+                            content = { i ->
+                                val d = row[i]
+                                PosterCard(
+                                    poster = d.poster,
+                                    title = d.title,
+                                    bottomChip = d.currentEpisode,
+                                    onClick = { nav.navigate("detail/donghua/${d.slug}") }
+                                )
+                            }
+                        )
+                    }
                 }
             }
             else -> item {
@@ -152,30 +190,33 @@ fun SearchScreen(nav: NavController) {
     }
 }
 
-/** Baris hasil ala dropdown SearchBox: baris teks truncate di panel surface-2. */
+/** Satu baris grid 3 kolom dengan gap 12dp ala grid-cols-3 gap-3 web. */
 @Composable
-private fun ResultRow(title: String, onClick: () -> Unit) {
-    Box(
+private fun PosterGridRow(count: Int, content: @Composable (Int) -> Unit) {
+    Row(
         Modifier
-            .padding(horizontal = 14.dp, vertical = 3.dp)
             .fillMaxWidth()
-            .clip(RoundedCornerShape(Cy.RadiusApp))
-            .background(Cy.Surface2)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp)
+            .padding(horizontal = 14.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text(
-            title, color = Cy.Text, fontSize = 14.sp,
-            maxLines = 1, overflow = TextOverflow.Ellipsis
-        )
+        repeat(count) { i ->
+            Box(Modifier.weight(1f)) { content(i) }
+        }
+        repeat(3 - count) { Spacer(Modifier.weight(1f)) }
     }
 }
 
+/** Panel kosong ala web: rounded-app, --surface, teks muted. */
 @Composable
-private fun EmptyNote(message: String) {
+private fun EmptyPanel(message: String) {
     Text(
         message,
         color = Cy.Text2, fontSize = 14.sp,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+        modifier = Modifier
+            .padding(horizontal = 14.dp, vertical = 4.dp)
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Cy.RadiusApp))
+            .background(Cy.Surface)
+            .padding(16.dp)
     )
 }

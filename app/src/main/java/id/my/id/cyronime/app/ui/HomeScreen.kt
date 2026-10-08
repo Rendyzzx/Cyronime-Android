@@ -89,9 +89,13 @@ fun HomeScreen(nav: NavController) {
                 if (isAnime) {
                     val ongoing = Api.animeList("ongoing", 1).items
                     animeOngoing = ongoing
-                    // Terpopuler: padanan fallback web (completed diurut skor).
-                    val completed = Api.animeList("completed", 1).items
-                    popular = completed.sortedByDescending { it.score?.toDoubleOrNull() ?: 0.0 }.take(5)
+                    // Terpopuler: endpoint popular backend (sumber sama dengan
+                    // Home web); fallback diurut skor bila kosong.
+                    val pop = HomeApi.popularAnime(1)
+                    popular = if (pop.isNotEmpty()) pop.take(5)
+                    else Api.animeList("completed", 1).items
+                        .sortedByDescending { it.score?.toDoubleOrNull() ?: 0.0 }
+                        .take(5)
                 } else {
                     donghuaLatest = Api.donghuaList("latest", 1).items
                     donghuaOngoing = Api.donghuaList("ongoing", 1).items
