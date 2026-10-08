@@ -102,13 +102,10 @@ fun LoginScreen(onDone: () -> Unit) {
                 busy = false
             } catch (e: GetCredentialException) {
                 error =
-                    "Login Google gagal (" + e.javaClass.simpleName + "). " +
-                    "Pastikan SHA-1 aplikasi sudah didaftarkan di Google Cloud Console " +
-                    "dan perangkat memakai Google Play Services terbaru."
+                    "Login Google gagal [" + e.javaClass.simpleName + "] " + (e.message ?: "")
                 busy = false
             } catch (e: Exception) {
-                val msg = e.message ?: ""
-                error = "Login gagal: " + (msg.ifBlank { e.javaClass.simpleName })
+                error = "Login gagal: " + ((e.message ?: "").ifBlank { e.javaClass.simpleName }) + " [" + e.javaClass.simpleName + "]"
                 busy = false
             }
         }
