@@ -178,10 +178,35 @@ fun CyronimeApp(initialDeepLink: String?) {
         }
     }
 
+    // Daftarkan token FCM ke backend setiap kali sesi aktif (dibuka / login baru).
+    // Sebelumnya registrasi hanya di onNewToken (sering sebelum login -> gagal)
+    // sehingga device tak pernah terdaftar dan broadcast bernilai 0/0.
+    // Upsert di backend bersifat idempoten, aman dipanggil berulang.
+    suspend fun syncPushRegistration() {
+        if (!Api.hasSession()) return
+        try {
+            val token = kotlinx.coroutines.suspendCancellableCoroutine<String?> { cont ->
+                com.google.firebase.messaging.FirebaseMessaging.getInstance().token
+                    .addOnSuccessListener { if (cont.isActive) cont.resume(it) {} }
+                    .addOnFailureListener { if (cont.isActive) cont.resume(null) {} }
+            } ?: return
+            Prefs.setFcmToken(context, token)
+            Api.registerDevice(context, token)
+        } catch (_: Exception) {
+            // Offline / belum siap: dicoba lagi saat app dibuka berikutnya.
+        }
+    }
+
     LaunchedEffect(Unit) {
         checkSystem()
         checkVersion()
         loadMe()
+        syncPushRegistration()
+    }
+
+    // Login baru (me berubah dari null) -> daftarkan perangkat segera.
+    LaunchedEffect(me?.email) {
+        if (me != null) syncPushRegistration()
     }
 
     // Cek maintenance saat app kembali ke foreground — tanpa polling.
