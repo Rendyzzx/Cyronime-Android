@@ -80,6 +80,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import androidx.navigation.NavController
 import id.my.id.cyronime.app.data.AnimeEpisode
+import id.my.id.cyronime.app.data.AnimeServerOption
 import id.my.id.cyronime.app.data.Api
 import id.my.id.cyronime.app.data.DonghuaEpisode
 import kotlinx.coroutines.launch
@@ -128,6 +129,27 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
     /** Mega terenkripsi (WebView hitam) -> selalu dicoba paling akhir. */
     fun isMega(title: String) = title.contains("mega", ignoreCase = true)
 
+    /**
+     * Peringkat server (kecil = dicoba duluan): vidhide bisa diekstrak -> diputar
+     * ExoPlayer native (0); server embed lain (desustream dll) hanya lewat
+     * WebView yang sering layar hitam (1); Mega terenkripsi, hitam (2).
+     */
+    fun rank(title: String): Int = when {
+        title.contains("vidhide", ignoreCase = true) -> 0
+        isMega(title) -> 2
+        else -> 1
+    }
+
+    /** Pilih server terbaik: kualitas yang diminta dulu (bila ada), lalu semua kualitas. */
+    fun pickBest(
+        pool: List<Pair<String, AnimeServerOption>>, preferQuality: String?
+    ): Pair<String, AnimeServerOption>? {
+        val q = preferQuality?.let { pq -> pool.filter { it.first == pq } }.orEmpty()
+        val bestInQ = q.minByOrNull { rank(it.second.title) }
+        val bestAll = pool.minByOrNull { rank(it.second.title) }
+        return bestInQ ?: bestAll
+    }
+
     fun epsOf(): Int? = anime?.episodeList?.firstOrNull { it.episodeId == id }?.eps
 
     /** Coba satu server anime; gagal -> fallback ke server lain (kualitas sama dulu). */
@@ -165,12 +187,10 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
                 val groups = anime?.qualities ?: emptyList()
                 val pool = groups.flatMap { g -> g.servers.map { g.quality to it } }
                     .filter { it.second.serverId !in failedServers.value }
-                val next = (pool.firstOrNull { it.first == quality && !isMega(it.second.title) }
-                    ?: pool.firstOrNull { !isMega(it.second.title) }
-                    ?: pool.firstOrNull())?.second
-                if (next != null) {
-                    val gq = groups.first { g -> g.servers.any { it.serverId == next.serverId } }.quality
-                    tryAnimeServer(gq, next.serverId, next.title)
+                // Fallback: server terbaik di kualitas sama; kalau habis, kualitas lain.
+                val best = pickBest(pool, quality)
+                if (best != null) {
+                    tryAnimeServer(best.first, best.second.serverId, best.second.title)
                     return@launch
                 }
                 streamUrl = null
@@ -200,7 +220,7 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
             failedServers.value = failedServers.value + key
             val remaining = groups.flatMap { g -> g.servers.map { g.quality to it } }
                 .filter { (_, sv) -> sv.serverId !in failedServers.value }
-            val next = remaining.firstOrNull { !isMega(it.second.title) } ?: remaining.firstOrNull()
+            val next = pickBest(remaining, activeQuality)
             if (next != null) {
                 streamUrl = null
                 tryAnimeServer(next.first, next.second.serverId, next.second.title)
@@ -227,7 +247,9 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
                     val ep = Api.animeEpisode(id)
                     anime = ep
                     val ordered = ep.qualities.flatMap { g -> g.servers.map { g.quality to it } }
-                    val first = ordered.firstOrNull { !isMega(it.second.title) } ?: ordered.firstOrNull()
+                    // Awal: server terbaik di SEMUA kualitas (vidhide dulu), lalu
+                    // user bisa ganti kualitas lewat menu.
+                    val first = pickBest(ordered, null)
                     when {
                         first != null -> tryAnimeServer(
                             first.first, first.second.serverId, first.second.title
@@ -671,9 +693,11 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
                                 .background(if (isActive) Cy.Accent else Cy.Surface2)
                                 .clickable {
                                     sheetOpen = false
-                                    val s = g.servers.firstOrNull { it.serverId !in failedServers.value && !isMega(it.title) }
-                                        ?: g.servers.firstOrNull { it.serverId !in failedServers.value }
-                                        ?: g.servers.firstOrNull() ?: return@clickable
+                                    // Dalam kualitas pilihan: vidhide > embed lain > Mega,
+                                    // server yang sudah gagal dilewati.
+                                    val s = g.servers.filter { it.serverId !in failedServers.value }
+                                        .minByOrNull { rank(it.title) }
+                                        ?: g.servers.minByOrNull { rank(it.title) } ?: return@clickable
                                     tryAnimeServer(g.quality, s.serverId, s.title)
                                 }
                                 .padding(horizontal = 16.dp, vertical = 12.dp)
