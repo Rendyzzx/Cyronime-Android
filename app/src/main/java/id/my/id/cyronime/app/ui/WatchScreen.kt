@@ -298,13 +298,28 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
     val nextId = ep?.nextEpisodeId ?: dep?.nextEpisodeSlug
     val contentId = ep?.animeId ?: dep?.donghuaSlug ?: ""
 
-    // Orientasi layar penuh (ala useFullscreenLock web)
+    // Orientasi layar penuh (ala useFullscreenLock web) + mode immersive:
+    // sembunyikan status bar (jam/wifi) & navigation bar saat fullscreen.
     DisposableEffect(fullscreen) {
         val activity = ctx as? Activity
         activity?.requestedOrientation = if (fullscreen)
             ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         else ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
-        onDispose { }
+        val window = activity?.window
+        if (window != null) {
+            val ctrl = androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
+            ctrl.systemBarsBehavior =
+                androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            if (fullscreen) ctrl.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            else ctrl.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        }
+        onDispose {
+            val w = (ctx as? Activity)?.window
+            w?.let {
+                androidx.core.view.WindowCompat.getInsetsController(it, it.decorView)
+                    .show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            }
+        }
     }
     DisposableEffect(Unit) {
         onDispose {
@@ -451,10 +466,17 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
         }
     }
 
+    // movableContent: PlayerBox boleh pindah posisi layout (portrait ->
+    // fullscreen) TANPA dibuat ulang — tanpa ini ExoPlayer/WebView di-dispose
+    // tiap toggle fullscreen dan video mundur ke detik awal.
+    val playerBox = remember {
+        androidx.compose.runtime.movableContentOf<Modifier> { mod -> PlayerBox(mod) }
+    }
+
     when {
         loading -> LoadingScreen("Menyiapkan player…")
         error != null -> ErrorScreen(error!!, retry = { load() })
-        fullscreen -> Box(Modifier.fillMaxSize()) { PlayerBox(Modifier.fillMaxSize()) }
+        fullscreen -> Box(Modifier.fillMaxSize()) { playerBox(Modifier.fillMaxSize()) }
         else -> Column(Modifier.fillMaxSize()) {
             /* ---------- Bar atas: back + Portal ---------- */
             Row(
@@ -486,7 +508,7 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
             }
 
             /* ---------- Player 16:9 ---------- */
-            PlayerBox(
+            playerBox(
                 Modifier
                     .fillMaxWidth()
                     .aspectRatio(16f / 9f)
