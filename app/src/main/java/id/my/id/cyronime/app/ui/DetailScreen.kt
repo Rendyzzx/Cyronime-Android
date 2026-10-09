@@ -49,8 +49,6 @@ import coil.compose.AsyncImage
 import id.my.id.cyronime.app.data.AnimeDetail
 import id.my.id.cyronime.app.data.Api
 import id.my.id.cyronime.app.data.DonghuaDetail
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
@@ -66,9 +64,11 @@ fun DetailScreen(nav: NavController, type: String, slug: String) {
     var donghuaDetail by remember { mutableStateOf<DonghuaDetail?>(null) }
     var favorite by remember { mutableStateOf(false) }
 
+    val io = rememberIoScope()
+
     fun reload() {
         loading = true
-        CoroutineScope(Dispatchers.IO).launch {
+        io.launch {
             try {
                 if (type == "anime") {
                     val d = Api.animeDetail(slug)
@@ -97,7 +97,7 @@ fun DetailScreen(nav: NavController, type: String, slug: String) {
         val title = d?.title ?: dd?.title ?: ""
         val poster = d?.poster ?: dd?.poster ?: ""
         val next = !favorite
-        CoroutineScope(Dispatchers.IO).launch {
+        io.launch {
             try {
                 if (next) Api.addFavorite(type, id, title, poster)
                 else Api.removeFavorite(type, id)

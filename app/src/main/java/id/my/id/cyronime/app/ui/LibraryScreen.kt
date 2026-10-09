@@ -43,9 +43,8 @@ import id.my.id.cyronime.app.BuildConfig
 import id.my.id.cyronime.app.data.Api
 import id.my.id.cyronime.app.data.Favorite
 import id.my.id.cyronime.app.data.HistoryEntry
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
 import okhttp3.Request
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -64,9 +63,11 @@ fun LibraryScreen(nav: NavController, mode: String) {
     var animeFav by remember { mutableStateOf<List<Favorite>>(emptyList()) }
     var donghuaFav by remember { mutableStateOf<List<Favorite>>(emptyList()) }
 
+    val io = rememberIoScope()
+
     fun reload() {
         loading = true
-        CoroutineScope(Dispatchers.IO).launch {
+        io.launch {
             try {
                 if (mode == "history") {
                     history = Api.history()
@@ -104,7 +105,7 @@ fun LibraryScreen(nav: NavController, mode: String) {
                     nav, mode,
                     showClear = mode == "history" && history.isNotEmpty(),
                     onClear = {
-                        CoroutineScope(Dispatchers.IO).launch {
+                        io.launch {
                             try {
                                 deleteHistory()
                                 history = emptyList()

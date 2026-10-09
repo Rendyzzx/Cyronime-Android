@@ -35,10 +35,8 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import id.my.id.cyronime.app.data.AnimeItem
 import id.my.id.cyronime.app.data.DonghuaItem
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 
 /**
  * Search meniru /search web persis: SearchBox (debounce 500ms), heading
@@ -54,12 +52,14 @@ fun SearchScreen(nav: NavController) {
     var results by remember { mutableStateOf<HomeApi.SearchFull?>(null) }
     var searchedFor by remember { mutableStateOf<String?>(null) }
 
+    val io = rememberIoScope()
+
     fun doSearch() {
         val q = query.trim()
         if (q.length < 2) return
         loading = true
         error = null
-        CoroutineScope(Dispatchers.IO).launch {
+        io.launch {
             try {
                 results = HomeApi.searchFull(q)
                 searchedFor = q

@@ -4,12 +4,36 @@ import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.webkit.CookieManager
+import coil.ImageLoader
+import coil.ImageLoaderFactory
+import coil.disk.DiskCache
+import coil.memory.MemoryCache
 
 /**
  * Application — setup sekali: notification channel + cookie store WebView
- * (dipakai bridge ke OkHttp untuk session Auth.js).
+ * (dipakai bridge ke OkHttp untuk session Auth.js) + cache gambar global
+ * (Coil) supaya poster tidak diunduh ulang saat pindah halaman / scroll.
  */
-class CyronimeApp : Application() {
+class CyronimeApp : Application(), ImageLoaderFactory {
+
+    override fun newImageLoader(): ImageLoader =
+        ImageLoader.Builder(this)
+            .crossfade(180)
+            // Memory cache 20% RAM — cukup untuk thumbnail daftar panjang.
+            .memoryCache {
+                MemoryCache.Builder(this)
+                    .maxSizePercent(0.20)
+                    .build()
+            }
+            // Disk cache poster & backdrop; HTTPS disajikan ulang dari cache.
+            .diskCache {
+                DiskCache.Builder()
+                    .directory(cacheDir.resolve("image_cache"))
+                    .maxSizeBytes(64L * 1024 * 1024)
+                    .build()
+            }
+            .respectCacheHeaders(false)
+            .build()
 
     override fun onCreate() {
         super.onCreate()

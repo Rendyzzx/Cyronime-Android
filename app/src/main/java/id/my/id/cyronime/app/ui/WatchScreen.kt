@@ -66,6 +66,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -79,11 +80,9 @@ import androidx.navigation.NavController
 import id.my.id.cyronime.app.data.AnimeEpisode
 import id.my.id.cyronime.app.data.Api
 import id.my.id.cyronime.app.data.DonghuaEpisode
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 
 /**
  * Watch ala /anime/watch/[episode] web: bar atas -> player 16:9 full-bleed
@@ -125,12 +124,14 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
     fun epsOf(): Int? = anime?.episodeList?.firstOrNull { it.episodeId == id }?.eps
 
     /** Coba satu server anime; gagal -> fallback ke server lain (kualitas sama dulu). */
+    val io = rememberIoScope()
+
     fun tryAnimeServer(quality: String, serverId: String, serverTitle: String) {
         activeQuality = quality
         activeServerKey = serverId
         statusMessage = "Mencoba $serverTitle (${qualityLabel(quality)})…"
         resolving = true
-        CoroutineScope(Dispatchers.IO).launch {
+        io.launch {
             try {
                 val url = Api.resolveServer(serverId)
                 if (url.isNotBlank()) {
@@ -171,7 +172,7 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
         error = null
         failedServers.value = emptySet()
         allFailed = false
-        CoroutineScope(Dispatchers.IO).launch {
+        io.launch {
             try {
                 if (type == "anime") {
                     val ep = Api.animeEpisode(id)
@@ -224,7 +225,7 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
         val title = ep?.animeTitle ?: ep?.title ?: dep?.donghuaTitle ?: dep?.title ?: ""
         val poster = dep?.poster ?: ""
         val next = !favorite
-        CoroutineScope(Dispatchers.IO).launch {
+        io.launch {
             try {
                 if (next) Api.addFavorite(type, contentId, title, poster)
                 else Api.removeFavorite(type, contentId)
@@ -638,9 +639,19 @@ private fun NativePlayer(
     var isFullscreen by remember { mutableStateOf(false) }
     var controlsShownAt by remember { mutableStateOf(0L) }
     var resumeDone by remember { mutableStateOf(false) }
+    val io = rememberIoScope()
+    var playerError by remember { mutableStateOf<String?>(null) }
 
     val player = remember(url) {
         ExoPlayer.Builder(context).build().apply {
+            // Audio focus: otomatis pause/duck saat panggilan masuk dll.
+            setAudioAttributes(
+                androidx.media3.common.AudioAttributes.Builder()
+                    .setUsage(androidx.media3.common.C.USAGE_MEDIA)
+                    .setContentType(androidx.media3.common.C.AUDIO_CONTENT_TYPE_MOVIE)
+                    .build(),
+                /* handleAudioFocus = */ true
+            )
             setMediaItem(MediaItem.fromUri(url))
             prepare()
             playWhenReady = false
@@ -664,6 +675,8 @@ private fun NativePlayer(
             }
             override fun onPlayerError(err: PlaybackException) {
                 spin = false
+                playerError = "Video gagal dimuat (${err.errorCodeName}). " +
+                    "Coba server/kualitas lain atau tekan Coba Lagi."
             }
         }
         player.addListener(l)
@@ -703,7 +716,7 @@ private fun NativePlayer(
                 val pos = player.currentPosition
                 val dur = player.duration
                 if (dur > 0) {
-                    CoroutineScope(Dispatchers.IO).launch {
+                    io.launch {
                         WatchProgressSync.save(
                             contentId = contentId, type = type, episodeId = id,
                             episode = episode, title = seriesTitle, poster = "",
@@ -720,6 +733,15 @@ private fun NativePlayer(
         player.seekTo(target)
         skipFlash = if (seconds < 0) "-10 dtk" else "+10 dtk"
         controlsShownAt = System.currentTimeMillis()
+    }
+
+    /** Coba lagi setelah error: bersihkan state lalu prepare ulang. */
+    fun retryPlayback() {
+        playerError = null
+        spin = true
+        player.setMediaItem(MediaItem.fromUri(url))
+        player.prepare()
+        player.playWhenReady = true
     }
 
     fun toggle() {
@@ -761,7 +783,30 @@ private fun NativePlayer(
                 }
         )
 
-        if (spin) {
+        playerError?.let { msg ->
+            Column(
+                Modifier
+                    .align(Alignment.Center)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Cy.OverlaySoft)
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(msg, color = Cy.Text, fontSize = 13.sp, textAlign = TextAlign.Center)
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "Coba Lagi",
+                    color = Cy.Text, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(Cy.RadiusChip))
+                        .background(Cy.Accent)
+                        .clickable { retryPlayback() }
+                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                )
+            }
+        }
+
+        if (spin && playerError == null) {
             CircularProgressIndicator(
                 color = Cy.Text2, strokeWidth = 3.dp,
                 modifier = Modifier.align(Alignment.Center).size(36.dp)
@@ -1000,17 +1045,34 @@ private fun fmtTime(s: Double): String {
 
 @Composable
 private fun EmbedPlayer(url: String) {
-    AndroidView(
-        factory = { ctx ->
-            WebView(ctx).apply {
-                @SuppressLint("SetJavaScriptEnabled")
-                settings.javaScriptEnabled = true
-                settings.domStorageEnabled = true
-                settings.mediaPlaybackRequiresUserGesture = false
-                webViewClient = WebViewClient()
-                loadUrl(url)
+    // WebView dibuat sekali per halaman; saat halaman ditinggalkan WebView
+    // di-pause & di-destroy supaya audio/video tidak lanjut di background
+    // dan memorinya tidak bocor (padanan iframe yang ter-unmount di web).
+    val context = LocalContext.current
+    val webView = remember { WebView(context) }
+    DisposableEffect(Unit) {
+        webView.apply {
+            @SuppressLint("SetJavaScriptEnabled")
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            settings.mediaPlaybackRequiresUserGesture = false
+            webViewClient = WebViewClient()
+            loadUrl(url)
+        }
+        onDispose {
+            webView.apply {
+                stopLoading()
+                onPause()
+                loadUrl("about:blank")
+                clearHistory()
+                removeAllViews()
+                destroy()
             }
-        },
+        }
+    }
+    AndroidView(
+        factory = { webView },
         modifier = Modifier.fillMaxSize()
     )
 }
+

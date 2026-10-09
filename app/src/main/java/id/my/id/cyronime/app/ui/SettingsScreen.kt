@@ -59,9 +59,8 @@ import id.my.id.cyronime.app.Prefs
 import id.my.id.cyronime.app.data.Api
 import id.my.id.cyronime.app.data.Me
 import id.my.id.cyronime.app.data.NotifyPrefs
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
 import okhttp3.Request
 
 /**
@@ -84,8 +83,10 @@ fun ProfileScreen(nav: NavController, onLoggedOut: () -> Unit) {
         }
     }
 
+    val io = rememberIoScope()
+
     fun logout() {
-        CoroutineScope(Dispatchers.IO).launch {
+        io.launch {
             try {
                 Api.unregisterDevice(context)
             } catch (_: Exception) {
@@ -229,9 +230,11 @@ fun SettingsScreen(nav: NavController, onLoggedOut: () -> Unit) {
     var confirmHistory by remember { mutableStateOf(false) }
     var confirmProgress by remember { mutableStateOf(false) }
 
+    val io = rememberIoScope()
+
     fun reload() {
         loading = true
-        CoroutineScope(Dispatchers.IO).launch {
+        io.launch {
             try {
                 me = Api.me()
                 prefs = Api.getNotifyPrefs()
@@ -246,7 +249,7 @@ fun SettingsScreen(nav: NavController, onLoggedOut: () -> Unit) {
     LaunchedEffect(Unit) { reload() }
 
     fun togglePref(key: String, next: Boolean) {
-        CoroutineScope(Dispatchers.IO).launch {
+        io.launch {
             try {
                 Api.setNotifyPref(key, next)
             } catch (_: Exception) {
@@ -255,7 +258,7 @@ fun SettingsScreen(nav: NavController, onLoggedOut: () -> Unit) {
     }
 
     fun logout() {
-        CoroutineScope(Dispatchers.IO).launch {
+        io.launch {
             try {
                 Api.unregisterDevice(context)
             } catch (_: Exception) {
@@ -326,7 +329,7 @@ fun SettingsScreen(nav: NavController, onLoggedOut: () -> Unit) {
         TextButton(onClick = {
             FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
                 Prefs.setFcmToken(context, token)
-                CoroutineScope(Dispatchers.IO).launch {
+                io.launch {
                     try {
                         Api.registerDevice(context, token)
                     } catch (_: Exception) {
@@ -399,7 +402,7 @@ fun SettingsScreen(nav: NavController, onLoggedOut: () -> Unit) {
             confirmLabel = "Hapus",
             onConfirm = {
                 confirmHistory = false
-                CoroutineScope(Dispatchers.IO).launch {
+                io.launch {
                     try {
                         deleteAll("history")
                     } catch (_: Exception) {
@@ -416,7 +419,7 @@ fun SettingsScreen(nav: NavController, onLoggedOut: () -> Unit) {
             confirmLabel = "Reset",
             onConfirm = {
                 confirmProgress = false
-                CoroutineScope(Dispatchers.IO).launch {
+                io.launch {
                     try {
                         deleteAll("progress")
                     } catch (_: Exception) {

@@ -57,10 +57,8 @@ import id.my.id.cyronime.app.data.AnimeItem
 import id.my.id.cyronime.app.data.Api
 import id.my.id.cyronime.app.data.DonghuaItem
 import id.my.id.cyronime.app.data.WatchProgress
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 /**
  * Home = dashboard ala web ("/" setelah onboarding): header brand + portal
@@ -80,9 +78,11 @@ fun HomeScreen(nav: NavController) {
     var donghuaLatest by remember { mutableStateOf<List<DonghuaItem>>(emptyList()) }
     var donghuaOngoing by remember { mutableStateOf<List<DonghuaItem>>(emptyList()) }
 
+    val io = rememberIoScope()
+
     fun load() {
         loading = true
-        CoroutineScope(Dispatchers.IO).launch {
+        io.launch {
             try {
                 val p = Api.progressList()
                 progress = p
@@ -489,10 +489,12 @@ fun PortalListScreen(nav: NavController, type: String) {
     fun apiTab(): String = if (isAnime) (if (tab == 0) "ongoing" else "completed")
     else (if (tab == 0) "latest" else "ongoing")
 
+    val io = rememberIoScope()
+
     fun load(reset: Boolean) {
         val p = if (reset) 1 else page + 1
         if (reset) loading = true else appending = true
-        CoroutineScope(Dispatchers.IO).launch {
+        io.launch {
             try {
                 if (isAnime) {
                     val res = Api.animeList(apiTab(), p)
