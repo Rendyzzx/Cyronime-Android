@@ -38,6 +38,8 @@ class CyronimeApp : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
 
+        id.my.id.cyronime.app.data.Api.initCache(this)
+
         // Cookie WebView: aktifkan + persist agar session bertahan restart app.
         val cm = CookieManager.getInstance()
         cm.setAcceptCookie(true)

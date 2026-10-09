@@ -81,8 +81,23 @@ fun HomeScreen(nav: NavController) {
 
     val io = rememberIoScope()
 
+    // Data tersimpan -> tampil instan tanpa "Memuat…"; jaringan menyegarkan senyap.
+    var primedHome by remember { mutableStateOf(false) }
+    if (!primedHome) {
+        primedHome = true
+        if (isAnime) {
+            val og = Api.peekAnimeList("ongoing", 1)
+            if (og != null) { animeOngoing = og.items; loading = false }
+        } else {
+            val dl = Api.peekDonghuaList("latest", 1)
+            val dg = Api.peekDonghuaList("ongoing", 1)
+            if (dl != null && dg != null) { donghuaLatest = dl.items; donghuaOngoing = dg.items; loading = false }
+        }
+    }
+
     fun load() {
-        loading = true
+        val hasData = if (isAnime) animeOngoing.isNotEmpty() else donghuaLatest.isNotEmpty()
+        if (!hasData) loading = true
         io.launch {
             try {
                 val p = Api.progressList()
@@ -524,7 +539,12 @@ fun PortalListScreen(nav: NavController, type: String) {
 
     fun load(reset: Boolean) {
         val p = if (reset) 1 else page + 1
-        if (reset) loading = true else appending = true
+        if (reset) {
+            // Cache ada -> isi instan, tanpa layar "Memuat…"; refresh jalan senyap.
+            val cached = if (isAnime) Api.peekAnimeList(apiTab(), 1)?.let { animeItems = it.items; hasNext = it.hasNextPage; true }
+            else Api.peekDonghuaList(apiTab(), 1)?.let { donghuaItems = it.items; hasNext = it.hasNextPage; true }
+            loading = cached != true
+        } else appending = true
         io.launch {
             try {
                 if (isAnime) {

@@ -131,10 +131,45 @@ object Api {
      * Data user (progress, favorit, history) TIDAK pernah lewat cache ini.
      */
     private class Cached(val at: Long, val body: JSONObject)
-    private val publicCache = object : java.util.LinkedHashMap<String, Cached>(32, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Cached>?) = size > 40
+    private val publicCache = object : java.util.LinkedHashMap<String, Cached>(64, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Cached>?) = size > 80
     }
     private const val PUBLIC_TTL_MS = 120_000L
+
+    // Cache disk (stale-while-revalidate): saat app dibuka lagi / kembali ke
+    // halaman, UI langsung memakai data terakhir (tanpa layar "Memuat…") lalu
+    // refresh senyap di belakang. Hanya data publik; data user tak pernah disimpan.
+    @Volatile private var diskDir: java.io.File? = null
+    private const val DISK_MAX_AGE_MS = 7L * 24 * 3600 * 1000
+
+    fun initCache(ctx: Context) {
+        diskDir = java.io.File(ctx.cacheDir, "api_public").apply { mkdirs() }
+    }
+
+    private fun diskFile(path: String): java.io.File? {
+        val dir = diskDir ?: return null
+        val name = java.security.MessageDigest.getInstance("SHA-1")
+            .digest(path.toByteArray()).joinToString("") { "%02x".format(it) }
+        return java.io.File(dir, name)
+    }
+
+    private fun readDisk(path: String): JSONObject? = try {
+        val f = diskFile(path)
+        if (f != null && f.exists() && System.currentTimeMillis() - f.lastModified() < DISK_MAX_AGE_MS)
+            JSONObject(f.readText()) else null
+    } catch (_: Exception) { null }
+
+    private fun writeDisk(path: String, body: JSONObject) {
+        try { diskFile(path)?.writeText(body.toString()) } catch (_: Exception) { }
+    }
+
+    /** Data terakhir (memori lalu disk) untuk path ini, TANPA jaringan & tanpa TTL. */
+    fun peekPublic(path: String): JSONObject? {
+        synchronized(publicCache) { publicCache[path]?.let { return it.body } }
+        val d = readDisk(path) ?: return null
+        synchronized(publicCache) { publicCache[path] = Cached(0L, d) }
+        return d
+    }
 
     private suspend fun getPublicJson(path: String): JSONObject {
         val now = System.currentTimeMillis()
@@ -143,6 +178,7 @@ object Api {
         }
         val fresh = getJson(path)
         synchronized(publicCache) { publicCache[path] = Cached(now, fresh) }
+        writeDisk(path, fresh)
         return fresh
     }
 
@@ -210,6 +246,39 @@ object Api {
             o.optBoolean("hasNextPage", false)
         )
     }
+
+
+    /* ---------- peek cache (tanpa jaringan) untuk UI instan ---------- */
+
+    private fun parseAnimeList(o: JSONObject): ListPage<AnimeItem> {
+        val arr = o.optJSONArray("items") ?: JSONArray()
+        return ListPage(
+            (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i)?.let(AnimeItem::parse) },
+            o.optBoolean("hasNextPage", false)
+        )
+    }
+
+    private fun parseDonghuaList(o: JSONObject): ListPage<DonghuaItem> {
+        val arr = o.optJSONArray("items") ?: JSONArray()
+        return ListPage(
+            (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i)?.let(DonghuaItem::parse) },
+            o.optBoolean("hasNextPage", false)
+        )
+    }
+
+    fun peekAnimeList(tab: String, page: Int): ListPage<AnimeItem>? =
+        peekPublic("/api/anime/list?tab=$tab&page=$page")?.let(::parseAnimeList)
+
+    fun peekDonghuaList(tab: String, page: Int): ListPage<DonghuaItem>? =
+        peekPublic("/api/donghua/list?tab=$tab&page=$page")?.let(::parseDonghuaList)
+
+    fun peekAnimeDetail(slug: String): AnimeDetail? =
+        peekPublic("/api/anime/" + java.net.URLEncoder.encode(slug, "UTF-8"))
+            ?.optJSONObject("detail")?.let { try { AnimeDetail.parse(it) } catch (_: Exception) { null } }
+
+    fun peekDonghuaDetail(slug: String): DonghuaDetail? =
+        peekPublic("/api/donghua/" + java.net.URLEncoder.encode(slug, "UTF-8"))
+            ?.optJSONObject("detail")?.let { try { DonghuaDetail.parse(it) } catch (_: Exception) { null } }
 
     data class Genre(val id: String, val title: String)
 

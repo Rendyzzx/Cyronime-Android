@@ -66,8 +66,16 @@ fun DetailScreen(nav: NavController, type: String, slug: String) {
 
     val io = rememberIoScope()
 
+    // Tampilkan data tersimpan seketika (tanpa layar "Memuat…"), lalu refresh senyap.
+    var primed by remember { mutableStateOf(false) }
+    if (!primed) {
+        primed = true
+        if (type == "anime") Api.peekAnimeDetail(slug)?.let { animeDetail = it; loading = false }
+        else Api.peekDonghuaDetail(slug)?.let { donghuaDetail = it; loading = false }
+    }
+
     fun reload() {
-        loading = true
+        if (animeDetail == null && donghuaDetail == null) loading = true
         io.launch {
             try {
                 if (type == "anime") {
