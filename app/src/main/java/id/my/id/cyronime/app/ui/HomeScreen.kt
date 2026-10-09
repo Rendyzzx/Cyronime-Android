@@ -531,6 +531,10 @@ fun PortalListScreen(nav: NavController, type: String) {
         }
     }
 
+    // Baris grid dihitung ulang hanya saat data berubah (bukan tiap recomposition).
+    val animeRows = remember(animeItems) { animeItems.chunked(3) }
+    val donghuaRows = remember(donghuaItems) { donghuaItems.chunked(3) }
+
     when {
         loading -> LoadingScreen()
         error != null -> ErrorScreen(error!!, retry = { load(reset = true) })
@@ -583,7 +587,7 @@ fun PortalListScreen(nav: NavController, type: String) {
             }
             // Grid 3 kolom ala InfiniteGrid web (grid-cols-3 gap-3)
             if (isAnime) {
-                items(animeItems.chunked(3), key = { it.first().animeId }) { row ->
+                items(animeRows, key = { it.first().animeId }) { row ->
                     Row(
                         Modifier
                             .fillMaxWidth()
@@ -604,7 +608,7 @@ fun PortalListScreen(nav: NavController, type: String) {
                     }
                 }
             } else {
-                items(donghuaItems.chunked(3), key = { it.first().slug }) { row ->
+                items(donghuaRows, key = { it.first().slug }) { row ->
                     Row(
                         Modifier
                             .fillMaxWidth()

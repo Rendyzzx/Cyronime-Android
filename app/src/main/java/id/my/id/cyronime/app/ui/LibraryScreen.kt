@@ -86,6 +86,9 @@ fun LibraryScreen(nav: NavController, mode: String) {
 
     LaunchedEffect(mode) { reload() }
 
+    val animeFavRows = remember(animeFav) { animeFav.chunked(3) }
+    val donghuaFavRows = remember(donghuaFav) { donghuaFav.chunked(3) }
+
     when {
         loading -> Column(Modifier.fillMaxSize()) {
             LibraryHeader(nav, mode, showClear = false, onClear = {})
@@ -131,7 +134,7 @@ fun LibraryScreen(nav: NavController, mode: String) {
                 if (animeFav.isEmpty()) {
                     item { EmptyPanel("Belum ada anime favorit. Tambahkan lewat tombol ♥ di halaman detail anime.") }
                 } else {
-                    items(animeFav.chunked(3), key = { it.first().contentId }) { row ->
+                    items(animeFavRows, key = { it.first().contentId }) { row ->
                         FavoriteRow(row) { f -> nav.navigate("detail/anime/${f.contentId}") }
                     }
                 }
@@ -139,7 +142,7 @@ fun LibraryScreen(nav: NavController, mode: String) {
                 if (donghuaFav.isEmpty()) {
                     item { EmptyPanel("Belum ada donghua favorit. Tambahkan lewat tombol ♥ di halaman detail donghua.") }
                 } else {
-                    items(donghuaFav.chunked(3), key = { it.first().contentId }) { row ->
+                    items(donghuaFavRows, key = { it.first().contentId }) { row ->
                         FavoriteRow(row) { f -> nav.navigate("detail/donghua/${f.contentId}") }
                     }
                 }

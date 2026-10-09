@@ -125,6 +125,27 @@ object Api {
             }
         }
 
+    /**
+     * Cache memori singkat khusus data publik (list/detail anime): kembali dari
+     * halaman detail / pindah tab terasa instan & tidak menembak ulang server.
+     * Data user (progress, favorit, history) TIDAK pernah lewat cache ini.
+     */
+    private class Cached(val at: Long, val body: JSONObject)
+    private val publicCache = object : java.util.LinkedHashMap<String, Cached>(32, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Cached>?) = size > 40
+    }
+    private const val PUBLIC_TTL_MS = 120_000L
+
+    private suspend fun getPublicJson(path: String): JSONObject {
+        val now = System.currentTimeMillis()
+        synchronized(publicCache) {
+            publicCache[path]?.let { if (now - it.at < PUBLIC_TTL_MS) return it.body }
+        }
+        val fresh = getJson(path)
+        synchronized(publicCache) { publicCache[path] = Cached(now, fresh) }
+        return fresh
+    }
+
     private suspend fun getJson(path: String): JSONObject {
         val text = execute("GET", path)
         return if (text.isBlank()) JSONObject() else JSONObject(text)
@@ -182,7 +203,7 @@ object Api {
     data class ListPage<T>(val items: List<T>, val hasNextPage: Boolean)
 
     suspend fun animeList(tab: String, page: Int): ListPage<AnimeItem> {
-        val o = getJson("/api/anime/list?tab=$tab&page=$page")
+        val o = getPublicJson("/api/anime/list?tab=$tab&page=$page")
         val arr = o.optJSONArray("items") ?: JSONArray()
         return ListPage(
             (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i)?.let(AnimeItem::parse) },
@@ -191,7 +212,7 @@ object Api {
     }
 
     suspend fun donghuaList(tab: String, page: Int): ListPage<DonghuaItem> {
-        val o = getJson("/api/donghua/list?tab=$tab&page=$page")
+        val o = getPublicJson("/api/donghua/list?tab=$tab&page=$page")
         val arr = o.optJSONArray("items") ?: JSONArray()
         return ListPage(
             (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i)?.let(DonghuaItem::parse) },
@@ -214,12 +235,12 @@ object Api {
     }
 
     suspend fun animeDetail(slug: String): AnimeDetail {
-        val o = getJson("/api/anime/" + java.net.URLEncoder.encode(slug, "UTF-8"))
+        val o = getPublicJson("/api/anime/" + java.net.URLEncoder.encode(slug, "UTF-8"))
         return AnimeDetail.parse(o.optJSONObject("detail") ?: throw HttpError(404, "not found"))
     }
 
     suspend fun donghuaDetail(slug: String): DonghuaDetail {
-        val o = getJson("/api/donghua/" + java.net.URLEncoder.encode(slug, "UTF-8"))
+        val o = getPublicJson("/api/donghua/" + java.net.URLEncoder.encode(slug, "UTF-8"))
         return DonghuaDetail.parse(o.optJSONObject("detail") ?: throw HttpError(404, "not found"))
     }
 

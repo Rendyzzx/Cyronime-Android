@@ -118,6 +118,11 @@ fun errorMessage(err: Exception): String = when (err) {
 
 /* ---------- kartu poster (meniru AnimeCard.tsx / DonghuaCard.tsx) ---------- */
 
+/** Brush konstan: dibuat sekali di level file, tidak dialokasi ulang per kartu. */
+private val PosterGradient = Brush.verticalGradient(
+    listOf(Color(0x00_000000), Color(0xB3_000000))
+)
+
 /**
  * Poster 3:4 radius 18, chip rating kanan-atas (bintang peach), chip kiri-bawah
  * (rounded-md 12sp), judul 14sp semibold 2 baris mt-2. Digunakan untuk kartu
@@ -140,23 +145,33 @@ fun PosterCard(
                 .clip(RoundedCornerShape(Cy.RadiusCard))
                 .background(Cy.Surface)
         ) {
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            val url = absPoster(poster)
+            // Request di-remember + ukuran dibatasi (poster kartu ~360px cukup):
+            // decode gambar kecil = scroll jauh lebih ringan & hemat RAM.
+            val request = remember(url) {
+                coil.request.ImageRequest.Builder(ctx)
+                    .data(url)
+                    .size(360, 480)
+                    .crossfade(false)
+                    .allowRgb565(true)
+                    .memoryCacheKey(url)
+                    .diskCacheKey(url)
+                    .build()
+            }
             AsyncImage(
-                model = absPoster(poster),
+                model = request,
                 contentDescription = title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
             )
-            // Gradasi bawah ala web (from-black/70 via transparent)
+            // Gradasi bawah ala web: Brush dibuat sekali (bukan tiap recomposition)
             Box(
                 Modifier
                     .fillMaxWidth()
                     .align(Alignment.BottomCenter)
                     .height(64.dp)
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Color(0x00_000000), Color(0xB3_000000))
-                        )
-                    )
+                    .background(PosterGradient)
             )
             if (!score.isNullOrBlank()) {
                 Row(

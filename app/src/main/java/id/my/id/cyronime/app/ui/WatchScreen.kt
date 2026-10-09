@@ -167,6 +167,32 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
         streamIsEmbed = !isDirectVideo(url)
     }
 
+    /** Dipanggil NativePlayer saat frame pertama siap: hapus pil "Mencoba…". */
+    fun onPlaybackReady() { statusMessage = null; allFailed = false }
+
+    /** ExoPlayer gagal memutar URL ini -> perlakukan server aktif sebagai gagal & coba berikutnya. */
+    fun onPlaybackFatal() {
+        val key = activeServerKey ?: return
+        if (type == "anime") {
+            val groups = anime?.qualities ?: emptyList()
+            failedServers.value = failedServers.value + key
+            val next = groups.flatMap { g -> g.servers.map { g.quality to it } }
+                .firstOrNull { (_, sv) -> sv.serverId !in failedServers.value }
+            if (next != null) {
+                streamUrl = null
+                tryAnimeServer(next.first, next.second.serverId, next.second.title)
+            } else {
+                statusMessage = null
+                allFailed = true
+            }
+        } else {
+            val servers = donghua?.servers ?: emptyList()
+            failedServers.value = failedServers.value + key
+            val next = servers.firstOrNull { it.name !in failedServers.value }
+            if (next != null) useDonghuaServer(next.name, next.url) else allFailed = true
+        }
+    }
+
     fun load() {
         loading = true
         error = null
@@ -266,8 +292,11 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
             val url = streamUrl
             if (url != null) {
                 if (streamIsEmbed) {
-                    EmbedPlayer(url)
+                    EmbedPlayer(url, onLoaded = { onPlaybackReady() })
                 } else {
+                    // key(url): ExoPlayer hanya dibuat ulang bila URL berganti,
+                    // bukan setiap state induk (pil status dll) berubah.
+                    androidx.compose.runtime.key(url) {
                     NativePlayer(
                         url = url,
                         contentId = contentId,
@@ -280,8 +309,11 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
                         nav = nav,
                         qualityLabel = qualityLabel(activeQuality),
                         onOpenSettings = { sheetOpen = true },
-                        onFullscreen = { fullscreen = !fullscreen }
+                        onFullscreen = { fullscreen = !fullscreen },
+                        onReady = { onPlaybackReady() },
+                        onFatalError = { onPlaybackFatal() }
                     )
+                    }
                 }
             }
 
@@ -625,7 +657,9 @@ private fun NativePlayer(
     nav: NavController,
     qualityLabel: String,
     onOpenSettings: () -> Unit,
-    onFullscreen: () -> Unit
+    onFullscreen: () -> Unit,
+    onReady: () -> Unit,
+    onFatalError: () -> Unit
 ) {
     val context = LocalContext.current
     var speed by remember { mutableStateOf(1.0f) }
@@ -643,7 +677,25 @@ private fun NativePlayer(
     var playerError by remember { mutableStateOf<String?>(null) }
 
     val player = remember(url) {
-        ExoPlayer.Builder(context).build().apply {
+        // Data source OkHttp: UA browser, TANPA Referer (sama seperti <video>
+        // di web), redirect http<->https diikuti. Tanpa ini sebagian host
+        // video menolak request default ExoPlayer -> layar kosong.
+        val http = okhttp3.OkHttpClient.Builder()
+            .followRedirects(true)
+            .followSslRedirects(true)
+            .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+        val dataSource = androidx.media3.datasource.okhttp.OkHttpDataSource.Factory(http)
+            .setUserAgent(
+                "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 " +
+                    "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+            )
+        ExoPlayer.Builder(context)
+            .setMediaSourceFactory(
+                androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSource)
+            )
+            .build().apply {
             // Audio focus: otomatis pause/duck saat panggilan masuk dll.
             setAudioAttributes(
                 androidx.media3.common.AudioAttributes.Builder()
@@ -670,13 +722,15 @@ private fun NativePlayer(
                 if (isPlaying) spin = false
             }
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_READY) spin = false
+                if (state == Player.STATE_READY) { spin = false; onReady() }
                 if (state == Player.STATE_BUFFERING && playing) spin = true
             }
             override fun onPlayerError(err: PlaybackException) {
                 spin = false
                 playerError = "Video gagal dimuat (${err.errorCodeName}). " +
-                    "Coba server/kualitas lain atau tekan Coba Lagi."
+                    "Mencoba server lain…"
+                // Minta layar induk pindah ke server berikutnya (fallback otomatis).
+                onFatalError()
             }
         }
         player.addListener(l)
@@ -1044,7 +1098,7 @@ private fun fmtTime(s: Double): String {
 /* ---------- Embed player (WebView, padanan iframe web) ---------- */
 
 @Composable
-private fun EmbedPlayer(url: String) {
+private fun EmbedPlayer(url: String, onLoaded: () -> Unit = {}) {
     // WebView dibuat sekali per halaman; saat halaman ditinggalkan WebView
     // di-pause & di-destroy supaya audio/video tidak lanjut di background
     // dan memorinya tidak bocor (padanan iframe yang ter-unmount di web).
@@ -1056,7 +1110,10 @@ private fun EmbedPlayer(url: String) {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.mediaPlaybackRequiresUserGesture = false
-            webViewClient = WebViewClient()
+            setBackgroundColor(android.graphics.Color.BLACK)
+            webViewClient = object : WebViewClient() {
+                override fun onPageFinished(view: WebView?, u: String?) { onLoaded() }
+            }
             loadUrl(url)
         }
         onDispose {

@@ -83,6 +83,9 @@ fun SearchScreen(nav: NavController) {
         if (q == query.trim()) doSearch()
     }
 
+    val animeRows = remember(results) { results?.anime?.chunked(3) ?: emptyList() }
+    val donghuaRows = remember(results) { results?.donghua?.chunked(3) ?: emptyList() }
+
     LazyColumn(Modifier.fillMaxSize()) {
         item {
             Column(Modifier.statusBarsPadding()) {
@@ -138,7 +141,7 @@ fun SearchScreen(nav: NavController) {
                 if (r.anime.isEmpty()) {
                     item { EmptyPanel("Tidak ada anime yang cocok.") }
                 } else {
-                    items(r.anime.chunked(3), key = { it.first().animeId }) { row ->
+                    items(animeRows, key = { it.first().animeId }) { row ->
                         PosterGridRow(
                             count = row.size,
                             content = { i ->
@@ -159,7 +162,7 @@ fun SearchScreen(nav: NavController) {
                 if (r.donghua.isEmpty()) {
                     item { EmptyPanel("Tidak ada donghua yang cocok.") }
                 } else {
-                    items(r.donghua.chunked(3), key = { it.first().slug }) { row ->
+                    items(donghuaRows, key = { it.first().slug }) { row ->
                         PosterGridRow(
                             count = row.size,
                             content = { i ->

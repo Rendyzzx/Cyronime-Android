@@ -124,41 +124,42 @@ fun DetailScreen(nav: NavController, type: String, slug: String) {
     val score = animeDetail?.score ?: donghuaDetail?.rating
     val genres = animeDetail?.genres ?: donghuaDetail?.genres ?: emptyList()
 
+    val recRows = remember(animeDetail) { animeDetail?.recommended?.take(4)?.chunked(2) ?: emptyList() }
+
     LazyColumn(Modifier.fillMaxSize()) {
-        // ===== Hero full-bleed 400dp =====
+        // ===== Hero (banner dengan jarak & sudut membulat) =====
         item {
             Box(
                 Modifier
+                    .statusBarsPadding()
+                    .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 4.dp)
                     .fillMaxWidth()
-                    .height(400.dp)
+                    .height(300.dp)
+                    .clip(RoundedCornerShape(Cy.RadiusCard))
+                    .background(Cy.Surface)
             ) {
                 AsyncImage(
                     model = absPoster(poster),
                     contentDescription = title,
                     contentScale = ContentScale.Crop,
+                    alignment = Alignment.TopCenter,
                     modifier = Modifier.fillMaxSize()
                 )
-                // Gradasi transparan 40% -> bg penuh (ala web)
+                // Gradasi bawah halus agar banner menyatu dengan konten
                 Box(
                     Modifier
                         .fillMaxSize()
                         .background(
                             Brush.verticalGradient(
-                                listOf(
-                                    androidx.compose.ui.graphics.Color(0x00212237),
-                                    androidx.compose.ui.graphics.Color(0x66212237),
-                                    Cy.Navy
-                                ),
-                                startY = 400f * 0.4f * 3.2f,
-                                endY = 1600f
+                                0.55f to androidx.compose.ui.graphics.Color.Transparent,
+                                1f to androidx.compose.ui.graphics.Color(0xCC212237)
                             )
                         )
                 )
                 // Tombol back di atas hero (40dp, overlay-soft)
                 Box(
                     Modifier
-                        .statusBarsPadding()
-                        .padding(12.dp)
+                        .padding(10.dp)
                         .size(40.dp)
                         .clip(RoundedCornerShape(50))
                         .background(Cy.OverlaySoft)
@@ -172,7 +173,7 @@ fun DetailScreen(nav: NavController, type: String, slug: String) {
 
         // ===== Konten =====
         item {
-            Column(Modifier.padding(horizontal = 16.dp)) {
+            Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp)) {
                 if (!status.isNullOrBlank()) {
                     Row(
                         Modifier
@@ -208,11 +209,16 @@ fun DetailScreen(nav: NavController, type: String, slug: String) {
                         genres.take(3).forEach { g -> GenreChip(g) }
                     }
                 }
+                Spacer(Modifier.height(24.dp))
+                Text("Synopsis", color = Cy.Text, fontSize = 21.sp, fontWeight = FontWeight.Light)
+                Spacer(Modifier.height(8.dp))
                 if (!synopsis.isNullOrBlank()) {
-                    Spacer(Modifier.height(24.dp))
-                    Text("Synopsis", color = Cy.Text, fontSize = 21.sp, fontWeight = FontWeight.Light)
-                    Spacer(Modifier.height(8.dp))
                     SynopsisText(synopsis)
+                } else {
+                    Text(
+                        "Sinopsis untuk judul ini belum tersedia dari sumber.",
+                        color = Cy.Text2, fontSize = 14.sp, lineHeight = 20.sp
+                    )
                 }
                 Spacer(Modifier.height(20.dp))
                 // Tombol Mulai nonton + Favorite (ala web)
@@ -323,7 +329,7 @@ fun DetailScreen(nav: NavController, type: String, slug: String) {
         val recommended = animeDetail?.recommended
         if (!recommended.isNullOrEmpty()) {
             item { SectionTitle("Anime Terkait") }
-            items(recommended.take(4).chunked(2), key = { it.first().animeId }) { row ->
+            items(recRows, key = { it.first().animeId }) { row ->
                 Row(
                     Modifier
                         .fillMaxWidth()

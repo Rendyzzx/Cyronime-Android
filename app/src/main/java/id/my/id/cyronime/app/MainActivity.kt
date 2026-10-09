@@ -255,7 +255,13 @@ fun CyronimeApp(initialDeepLink: String?) {
         )
     }
 
-    val start = if (sessionActive && Prefs.onboardingDone(context)) "home" else "onboarding"
+    // Start destination dikunci SEKALI (remember) agar login di tengah onboarding
+    // tidak membuat NavHost menghitung ulang & melompat ke Home. Home hanya
+    // dibuka langsung jika sesi ada DAN portal sudah dipilih user.
+    val start = remember {
+        if (Api.hasSession() && Prefs.onboardingDone(context) && Prefs.portalChosen(context)) "home"
+        else "onboarding"
+    }
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route
     val showBottomNav = currentRoute == "home" || currentRoute == "search" ||
@@ -282,7 +288,11 @@ fun CyronimeApp(initialDeepLink: String?) {
         NavHost(
             navController = navController,
             startDestination = start,
-            modifier = Modifier.padding(padding)
+            modifier = Modifier.padding(padding),
+            enterTransition = { androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(120)) },
+            exitTransition = { androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(90)) },
+            popEnterTransition = { androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(120)) },
+            popExitTransition = { androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(90)) }
         ) {
             composable("onboarding") {
                 // Sama seperti Web: Splash > Disclaimer > Airin > Carousel > LOGIN > Pilih Tontonan.
@@ -297,6 +307,7 @@ fun CyronimeApp(initialDeepLink: String?) {
                     },
                     onPick = { portal ->
                         Prefs.setPortal(context, portal)
+                        Prefs.setPortalChosen(context, true)
                         Prefs.setOnboardingDone(context, true)
                         portalAnime = portal == "anime"
                         navController.navigate("home") { popUpTo("onboarding") { inclusive = true } }
@@ -307,7 +318,10 @@ fun CyronimeApp(initialDeepLink: String?) {
                 LoginScreen(onDone = {
                     sessionActive = true
                     scope.launch { loadMe() }
-                    navController.navigate("home") { popUpTo("login") { inclusive = true } }
+                    // Selalu lewat Pilih Tontonan dulu, jangan langsung ke Home.
+                    navController.navigate(
+                        if (Prefs.portalChosen(context)) "home" else "onboarding"
+                    ) { popUpTo("login") { inclusive = true } }
                 })
             }
             composable("home") {

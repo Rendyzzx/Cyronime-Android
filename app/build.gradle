@@ -21,8 +21,8 @@ android {
         applicationId "id.my.id.cyronime.app"
         minSdk 24
         targetSdk 34
-        versionCode 8
-        versionName "1.3.0"
+        versionCode 10
+        versionName "1.3.2"
         // URL backend Cyronime (sama dengan Web) — ubah kalau ada domain sendiri.
         buildConfigField "String", "WEB_URL", "\"https://cyronime.web.id\""
         // Web OAuth client (public, bukan rahasia) — serverClientId Google Sign-In native.
@@ -42,7 +42,11 @@ android {
 
     buildTypes {
         release {
-            minifyEnabled false
+            // APK yang didistribusi ke pengguna: R8 + shrink resource.
+            // Inilah yang membuat scroll Compose jauh lebih ringan dibanding debug.
+            minifyEnabled true
+            shrinkResources true
+            signingConfig signingConfigs.debug
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
@@ -91,6 +95,7 @@ dependencies {
     implementation 'androidx.media3:media3-exoplayer:1.3.1'
     implementation 'androidx.media3:media3-exoplayer-hls:1.3.1'
     implementation 'androidx.media3:media3-ui:1.3.1'
+    implementation 'androidx.media3:media3-datasource-okhttp:1.3.1'
 
     // Google Sign-In native (Credential Manager)
     implementation 'androidx.credentials:credentials:1.3.0'

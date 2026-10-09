@@ -14,6 +14,7 @@ object Prefs {
     private const val KEY_SESSION_DONE = "session_done"
     private const val KEY_PORTAL = "portal"
     private const val KEY_ONB_DONE = "onboarding_done"
+    private const val KEY_PORTAL_CHOSEN = "portal_chosen"
 
     private fun sp(ctx: Context) = ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
@@ -41,6 +42,10 @@ object Prefs {
     /** Portal aktif ("anime" | "donghua") — sama konsepnya dengan Web. */
     fun portal(ctx: Context): String = sp(ctx).getString(KEY_PORTAL, "anime") ?: "anime"
     fun setPortal(ctx: Context, v: String) { sp(ctx).edit().putString(KEY_PORTAL, v).apply() }
+
+    /** True hanya jika user benar-benar menekan kartu Anime/Donghua di langkah Pilih Tontonan. */
+    fun portalChosen(ctx: Context): Boolean = sp(ctx).getBoolean(KEY_PORTAL_CHOSEN, false)
+    fun setPortalChosen(ctx: Context, v: Boolean) { sp(ctx).edit().putBoolean(KEY_PORTAL_CHOSEN, v).apply() }
 
     fun onboardingDone(ctx: Context): Boolean = sp(ctx).getBoolean(KEY_ONB_DONE, false)
     fun setOnboardingDone(ctx: Context, v: Boolean) { sp(ctx).edit().putBoolean(KEY_ONB_DONE, v).apply() }

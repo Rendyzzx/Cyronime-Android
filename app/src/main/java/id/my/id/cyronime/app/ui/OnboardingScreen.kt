@@ -74,6 +74,7 @@ fun OnboardingScreen(
     loginContent: @Composable (onLoggedIn: () -> Unit) -> Unit,
     onPick: (portal: String) -> Unit
 ) {
+    // Sudah login (mis. sesi lama) tapi belum pernah memilih portal -> langsung Pilih Tontonan.
     var step by remember { mutableStateOf(if (loggedIn) Step.Pick else Step.Splash) }
     var slide by remember { mutableIntStateOf(0) }
     var needLogin by remember { mutableStateOf(false) }
