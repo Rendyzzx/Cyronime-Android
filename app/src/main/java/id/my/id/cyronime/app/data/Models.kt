@@ -211,7 +211,13 @@ data class AnimeQualityGroup(val quality: String, val servers: List<AnimeServerO
  * Direct file (HLS/MP4) hasil ekstraksi backend dari halaman embed server.
  * type: "hls" | "mp4" — diputar ExoPlayer (bukan WebView).
  */
-data class ExtractedStream(val url: String, val type: String, val host: String) {
+data class ExtractedStream(
+    val url: String,
+    val type: String,
+    val host: String,
+    /** Referer utk request media (origin halaman embed). */
+    val referer: String = ""
+) {
     companion object {
         /** Respons /api/anime/stream/:id. null bila field kosong. */
         fun parse(o: JSONObject): ExtractedStream? {

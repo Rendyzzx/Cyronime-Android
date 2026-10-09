@@ -284,18 +284,20 @@ object Api {
     }
 
     /**
-     * serverId -> direct file hasil ekstraksi backend (utk ExoPlayer).
-     * null berarti ekstraksi tidak tersedia -> pemanggil fallback WebView
-     * dengan URL embed dari resolveServer(). Response tidak pernah di-cache
-     * (URL direct berumur pendek, token per sesi fetch).
+     * Direct file utk ExoPlayer. Ekstraksi dijalankan DI HP (EmbedExtractor):
+     * token m3u8 vidhide terikat ASN peminta, jadi hasil ekstraksi backend
+     * (AWS) ditolak CDN dengan 403 saat diputar dari HP. Backend hanya jadi
+     * cadangan bila ekstraksi lokal gagal. null -> pemanggil pakai WebView.
      */
-    suspend fun extractStream(serverId: String): ExtractedStream? {
+    suspend fun extractStream(embedUrl: String, serverId: String): ExtractedStream? {
+        if (!EmbedExtractor.isExtractable(embedUrl)) return null
+        val local = withContext(Dispatchers.IO) { EmbedExtractor.extract(embedUrl) }
+        if (local != null) return ExtractedStream(local.url, local.type, local.host, local.referer)
         return try {
             val o = getJson("/api/anime/stream/" + java.net.URLEncoder.encode(serverId, "UTF-8"))
-            // fallback:"embed" -> tidak ada direct file, client pakai WebView
             if (o.has("fallback")) null else ExtractedStream.parse(o)
         } catch (_: Exception) {
-            null  // endpoint tidak ada/gangguan -> WebView seperti biasa
+            null
         }
     }
 

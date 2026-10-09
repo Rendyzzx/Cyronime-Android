@@ -107,6 +107,7 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
     var activeServerKey by remember { mutableStateOf<String?>(null) }
     var streamUrl by remember { mutableStateOf<String?>(null) }
     var streamIsEmbed by remember { mutableStateOf(true) }
+    var streamReferer by remember { mutableStateOf("") }
     var resolving by remember { mutableStateOf(false) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var posterForProgress by remember { mutableStateOf("") }
@@ -123,6 +124,9 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
         q.contains("360") -> "360p"
         else -> q
     }
+
+    /** Mega terenkripsi (WebView hitam) -> selalu dicoba paling akhir. */
+    fun isMega(title: String) = title.contains("mega", ignoreCase = true)
 
     fun epsOf(): Int? = anime?.episodeList?.firstOrNull { it.episodeId == id }?.eps
 
@@ -145,10 +149,11 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
                     var target = url
                     var embed = !isDirectVideo(url)
                     if (embed) {
-                        val direct = Api.extractStream(serverId)
+                        val direct = Api.extractStream(url, serverId)
                         if (direct != null && isDirectVideo(direct.url)) {
                             target = direct.url
                             embed = false
+                            streamReferer = direct.referer
                         }
                     }
                     streamUrl = target
@@ -158,10 +163,11 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
             } catch (_: Exception) {
                 failedServers.value = failedServers.value + serverId
                 val groups = anime?.qualities ?: emptyList()
-                val next = groups.firstOrNull { it.quality == quality }
-                    ?.servers?.firstOrNull { it.serverId !in failedServers.value }
-                    ?: groups.firstOrNull { g -> g.servers.any { it.serverId !in failedServers.value } }
-                        ?.let { g -> g.servers.first { it.serverId !in failedServers.value } }
+                val pool = groups.flatMap { g -> g.servers.map { g.quality to it } }
+                    .filter { it.second.serverId !in failedServers.value }
+                val next = (pool.firstOrNull { it.first == quality && !isMega(it.second.title) }
+                    ?: pool.firstOrNull { !isMega(it.second.title) }
+                    ?: pool.firstOrNull())?.second
                 if (next != null) {
                     val gq = groups.first { g -> g.servers.any { it.serverId == next.serverId } }.quality
                     tryAnimeServer(gq, next.serverId, next.title)
@@ -192,8 +198,9 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
         if (type == "anime") {
             val groups = anime?.qualities ?: emptyList()
             failedServers.value = failedServers.value + key
-            val next = groups.flatMap { g -> g.servers.map { g.quality to it } }
-                .firstOrNull { (_, sv) -> sv.serverId !in failedServers.value }
+            val remaining = groups.flatMap { g -> g.servers.map { g.quality to it } }
+                .filter { (_, sv) -> sv.serverId !in failedServers.value }
+            val next = remaining.firstOrNull { !isMega(it.second.title) } ?: remaining.firstOrNull()
             if (next != null) {
                 streamUrl = null
                 tryAnimeServer(next.first, next.second.serverId, next.second.title)
@@ -219,10 +226,11 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
                 if (type == "anime") {
                     val ep = Api.animeEpisode(id)
                     anime = ep
-                    val first = ep.qualities.firstOrNull()?.servers?.firstOrNull()
+                    val ordered = ep.qualities.flatMap { g -> g.servers.map { g.quality to it } }
+                    val first = ordered.firstOrNull { !isMega(it.second.title) } ?: ordered.firstOrNull()
                     when {
                         first != null -> tryAnimeServer(
-                            ep.qualities.first().quality, first.serverId, first.title
+                            first.first, first.second.serverId, first.second.title
                         )
                         !ep.defaultStreamingUrl.isNullOrBlank() -> {
                             streamUrl = ep.defaultStreamingUrl
@@ -312,12 +320,32 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
             if (url != null) {
                 if (streamIsEmbed) {
                     EmbedPlayer(url, onLoaded = { onPlaybackReady() })
+                    // WebView embed tak punya kontrol rotate/fullscreen sendiri
+                    // (mis. Mega) -> sediakan tombol di pojok kanan bawah.
+                    Box(
+                        Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(8.dp)
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(Color(0x99_000000))
+                            .clickable { fullscreen = !fullscreen },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
+                            contentDescription = "Layar penuh / putar",
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
                 } else {
                     // key(url): ExoPlayer hanya dibuat ulang bila URL berganti,
                     // bukan setiap state induk (pil status dll) berubah.
                     androidx.compose.runtime.key(url) {
                     NativePlayer(
                         url = url,
+                        referer = streamReferer,
                         contentId = contentId,
                         type = type,
                         id = id,
@@ -667,6 +695,7 @@ private fun isDirectVideo(url: String): Boolean {
 @Composable
 private fun NativePlayer(
     url: String,
+    referer: String = "",
     contentId: String,
     type: String,
     id: String,
@@ -709,8 +738,13 @@ private fun NativePlayer(
             .build()
         val dataSource = androidx.media3.datasource.okhttp.OkHttpDataSource.Factory(http)
             .setUserAgent(
-                "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 " +
-                    "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+                "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 " +
+                    "(KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+            )
+            .setDefaultRequestProperties(
+                if (referer.isNotBlank())
+                    mapOf("Referer" to referer, "Origin" to referer.trimEnd('/'))
+                else emptyMap()
             )
         ExoPlayer.Builder(context)
             .setMediaSourceFactory(
@@ -1146,8 +1180,10 @@ private fun EmbedPlayer(url: String, onLoaded: () -> Unit = {}) {
             settings.domStorageEnabled = true
             settings.databaseEnabled = true
             settings.mediaPlaybackRequiresUserGesture = false
-            settings.loadWithOverviewMode = true
+            settings.loadWithOverviewMode = false
             settings.useWideViewPort = true
+            // Video blob/MSE (Mega) kadang hitam bila layer tak hardware.
+            setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
             settings.javaScriptCanOpenWindowsAutomatically = false
             settings.setSupportMultipleWindows(false)
             settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
