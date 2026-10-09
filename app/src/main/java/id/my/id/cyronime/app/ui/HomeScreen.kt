@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -165,7 +166,15 @@ fun HomeScreen(nav: NavController) {
                                 .clickable { nav.navigate("genre") }
                                 .padding(horizontal = 16.dp),
                             contentAlignment = Alignment.Center
-                        ) { Text("Genre", color = Cy.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(Icons.Filled.Category, "Genre", tint = Cy.Peach, modifier = Modifier.size(18.dp))
+                                Text("Genre", color = Cy.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
                     }
                 }
                 Spacer(Modifier.height(24.dp))
@@ -591,17 +600,38 @@ fun PortalListScreen(nav: NavController, type: String) {
                             if (isAnime) "Anime" else "Donghua",
                             color = Cy.Text, fontSize = 18.sp, fontWeight = FontWeight.Bold
                         )
-                        if (isAnime) {
-                            Text(
-                                "Genre", color = Cy.Peach, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.clickable { nav.navigate("genre") }.padding(8.dp)
-                            )
+                        // Genre + switch portal dikelompokkan di kanan (tidak menggantung di tengah)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            if (isAnime) {
+                                Row(
+                                    Modifier
+                                        .height(44.dp)
+                                        .clip(RoundedCornerShape(Cy.RadiusChip))
+                                        .background(Cy.Surface2)
+                                        .clickable { nav.navigate("genre") }
+                                        .padding(horizontal = 14.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Category, "Genre",
+                                        tint = Cy.Peach, modifier = Modifier.size(18.dp)
+                                    )
+                                    Text(
+                                        "Genre", color = Cy.Text, fontSize = 14.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
+                            PortalChip(isAnime = isAnime, onClick = {
+                                val next = if (isAnime) "donghua" else "anime"
+                                Prefs.setPortal(ctx, next)
+                                nav.navigate("home") { popUpTo("home") { inclusive = true } }
+                            })
                         }
-                        PortalChip(isAnime = isAnime, onClick = {
-                            val next = if (isAnime) "donghua" else "anime"
-                            Prefs.setPortal(ctx, next)
-                            nav.navigate("home") { popUpTo("home") { inclusive = true } }
-                        })
                     }
                     Spacer(Modifier.height(20.dp))
                     TabsRow(

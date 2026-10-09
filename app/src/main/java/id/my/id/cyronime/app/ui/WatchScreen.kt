@@ -1,5 +1,7 @@
 package id.my.id.cyronime.app.ui
 
+import id.my.id.cyronime.app.R
+
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.pm.ActivityInfo
@@ -837,7 +839,21 @@ private fun NativePlayer(
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         AndroidView(
-            factory = { ctx -> PlayerView(ctx).apply { this.player = player; useController = false } },
+            factory = { ctx ->
+                // TextureView (bukan SurfaceView) + FIT: SurfaceView di dalam
+                // Compose sering ter-layout gepeng/0 tinggi. Ukuran dipaksa MATCH_PARENT.
+                (android.view.LayoutInflater.from(ctx)
+                    .inflate(R.layout.player_texture_view, null) as PlayerView).apply {
+                    layoutParams = android.view.ViewGroup.LayoutParams(
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                    resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    setShutterBackgroundColor(android.graphics.Color.BLACK)
+                    this.player = player
+                    useController = false
+                }
+            },
             modifier = Modifier.fillMaxSize()
         )
 
