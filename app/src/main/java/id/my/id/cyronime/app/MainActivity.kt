@@ -66,6 +66,7 @@ import id.my.id.cyronime.app.data.SystemStatus
 import id.my.id.cyronime.app.ui.Cy
 import id.my.id.cyronime.app.ui.CyronimeTheme
 import id.my.id.cyronime.app.ui.DetailScreen
+import id.my.id.cyronime.app.ui.GenreScreen
 import id.my.id.cyronime.app.ui.HomeScreen
 import id.my.id.cyronime.app.ui.LibraryScreen
 import id.my.id.cyronime.app.ui.LoginScreen
@@ -335,6 +336,7 @@ fun CyronimeApp(initialDeepLink: String?) {
                 LaunchedEffect(type) { portalAnime = type == "anime" }
             }
             composable("search") { SearchScreen(navController) }
+            composable("genre") { GenreScreen(navController) }
             composable("profile") {
                 ProfileScreen(navController, onLoggedOut = {
                     sessionActive = false

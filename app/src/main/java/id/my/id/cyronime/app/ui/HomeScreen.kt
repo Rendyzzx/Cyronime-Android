@@ -139,19 +139,34 @@ fun HomeScreen(nav: NavController) {
             // ===== Search bar (pindah ke layar search) =====
             item {
                 Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp)
-                        .height(48.dp)
-                        .clip(RoundedCornerShape(Cy.RadiusChip))
-                        .background(Cy.Surface2)
-                        .clickable { nav.navigate("search") }
-                        .padding(start = 16.dp, end = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Icon(Icons.Filled.Search, "Cari", tint = Cy.Text2, modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.width(14.dp))
-                    Text("Cari anime", color = Cy.Text2, fontSize = 15.sp)
+                    Row(
+                        Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                            .clip(RoundedCornerShape(Cy.RadiusChip))
+                            .background(Cy.Surface2)
+                            .clickable { nav.navigate("search") }
+                            .padding(start = 16.dp, end = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Filled.Search, "Cari", tint = Cy.Text2, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(14.dp))
+                        Text("Cari anime", color = Cy.Text2, fontSize = 15.sp)
+                    }
+                    if (isAnime) {
+                        Box(
+                            Modifier
+                                .height(48.dp)
+                                .clip(RoundedCornerShape(Cy.RadiusChip))
+                                .background(Cy.Surface2)
+                                .clickable { nav.navigate("genre") }
+                                .padding(horizontal = 16.dp),
+                            contentAlignment = Alignment.Center
+                        ) { Text("Genre", color = Cy.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
+                    }
                 }
                 Spacer(Modifier.height(24.dp))
             }
@@ -381,8 +396,15 @@ private fun HeroBase(
 
 @Composable
 private fun HeroResume(p: WatchProgress, nav: NavController) {
+    // Progres lama tersimpan tanpa poster -> ambil dari detail (cache) sebagai fallback.
+    var poster by remember(p.contentId) { mutableStateOf<String?>(p.poster) }
+    LaunchedEffect(p.contentId) {
+        if (poster.isNullOrBlank() && p.type == "anime") {
+            poster = try { Api.animeDetail(p.contentId).poster } catch (_: Exception) { null }
+        }
+    }
     HeroBase(
-        poster = p.poster,
+        poster = poster,
         chip = "Lanjut nonton",
         title = p.title,
         subtitle = if (p.episode != null) "Episode ${p.episode}" else "Lanjutkan dari terakhir kali",
@@ -569,6 +591,12 @@ fun PortalListScreen(nav: NavController, type: String) {
                             if (isAnime) "Anime" else "Donghua",
                             color = Cy.Text, fontSize = 18.sp, fontWeight = FontWeight.Bold
                         )
+                        if (isAnime) {
+                            Text(
+                                "Genre", color = Cy.Peach, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.clickable { nav.navigate("genre") }.padding(8.dp)
+                            )
+                        }
                         PortalChip(isAnime = isAnime, onClick = {
                             val next = if (isAnime) "donghua" else "anime"
                             Prefs.setPortal(ctx, next)

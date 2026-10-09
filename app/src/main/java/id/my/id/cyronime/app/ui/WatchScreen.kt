@@ -107,6 +107,7 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
     var streamIsEmbed by remember { mutableStateOf(true) }
     var resolving by remember { mutableStateOf(false) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
+    var posterForProgress by remember { mutableStateOf("") }
     var allFailed by remember { mutableStateOf(false) }
     val failedServers = remember { mutableStateOf(setOf<String>()) }
     var sheetOpen by remember { mutableStateOf(false) }
@@ -214,9 +215,12 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
                         }
                         else -> error = "Tidak ada server streaming untuk episode ini."
                     }
+                    // Poster untuk kartu "Lanjut nonton": ambil dari detail (cache 2 menit).
+                    val posterUrl = try { Api.animeDetail(ep.animeId).poster } catch (_: Exception) { "" }
+                    posterForProgress = posterUrl
                     Api.postProgress(
                         contentId = ep.animeId, type = "anime", episodeId = id,
-                        episode = ep.epsOf(id), title = ep.animeTitle ?: ep.title, poster = ""
+                        episode = ep.epsOf(id), title = ep.animeTitle ?: ep.title, poster = posterUrl
                     )
                     favorite = Api.favorites("anime").any { it.contentId == ep.animeId }
                 } else {
@@ -308,6 +312,7 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
                         nextId = nextId,
                         nav = nav,
                         qualityLabel = qualityLabel(activeQuality),
+                        poster = posterForProgress,
                         onOpenSettings = { sheetOpen = true },
                         onFullscreen = { fullscreen = !fullscreen },
                         onReady = { onPlaybackReady() },
@@ -656,6 +661,7 @@ private fun NativePlayer(
     nextId: String?,
     nav: NavController,
     qualityLabel: String,
+    poster: String = "",
     onOpenSettings: () -> Unit,
     onFullscreen: () -> Unit,
     onReady: () -> Unit,
@@ -773,7 +779,7 @@ private fun NativePlayer(
                     io.launch {
                         WatchProgressSync.save(
                             contentId = contentId, type = type, episodeId = id,
-                            episode = episode, title = seriesTitle, poster = "",
+                            episode = episode, title = seriesTitle, poster = poster,
                             position = pos, duration = dur
                         )
                     }
@@ -1109,10 +1115,45 @@ private fun EmbedPlayer(url: String, onLoaded: () -> Unit = {}) {
             @SuppressLint("SetJavaScriptEnabled")
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
+            settings.databaseEnabled = true
             settings.mediaPlaybackRequiresUserGesture = false
+            settings.loadWithOverviewMode = true
+            settings.useWideViewPort = true
+            settings.javaScriptCanOpenWindowsAutomatically = false
+            settings.setSupportMultipleWindows(false)
+            settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+            // UA Chrome seluler biasa (tanpa token "wv") -> host embed (desustream,
+            // vidhide, mega) tidak menolak WebView sebagai bot.
+            settings.userAgentString =
+                "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 " +
+                    "(KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+            android.webkit.CookieManager.getInstance().apply {
+                setAcceptCookie(true)
+                setAcceptThirdPartyCookies(this@apply.let { webView }, true)
+            }
             setBackgroundColor(android.graphics.Color.BLACK)
+            // Fullscreen video dari dalam embed (tombol layar penuh player mereka)
+            webChromeClient = object : android.webkit.WebChromeClient() {
+                private var customView: android.view.View? = null
+                override fun onShowCustomView(v: android.view.View?, cb: CustomViewCallback?) {
+                    customView = v
+                    (webView.parent as? android.view.ViewGroup)?.addView(v)
+                }
+                override fun onHideCustomView() {
+                    (customView?.parent as? android.view.ViewGroup)?.removeView(customView)
+                    customView = null
+                }
+            }
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, u: String?) { onLoaded() }
+                // Iklan/redirect pop-under: tahan navigasi ke luar host embed awal.
+                override fun shouldOverrideUrlLoading(
+                    view: WebView?, request: android.webkit.WebResourceRequest?
+                ): Boolean {
+                    val target = request?.url?.host ?: return false
+                    val origin = android.net.Uri.parse(url).host ?: return false
+                    return request.isForMainFrame && !target.endsWith(origin.substringAfter('.'))
+                }
             }
             loadUrl(url)
         }

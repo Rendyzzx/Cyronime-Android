@@ -211,6 +211,29 @@ object Api {
         )
     }
 
+    data class Genre(val id: String, val title: String)
+
+    /** Daftar genre anime (id numerik AnimeIn). */
+    suspend fun animeGenres(): List<Genre> {
+        val o = getPublicJson("/api/anime/genres")
+        val arr = o.optJSONArray("genres") ?: JSONArray()
+        return (0 until arr.length()).mapNotNull { i ->
+            arr.optJSONObject(i)?.let {
+                val id = it.optString("id"); val t = it.optString("title")
+                if (id.isBlank() || t.isBlank()) null else Genre(id, t)
+            }
+        }
+    }
+
+    suspend fun animeByGenre(genreId: String, page: Int): ListPage<AnimeItem> {
+        val o = getPublicJson("/api/anime/list?genre=" + java.net.URLEncoder.encode(genreId, "UTF-8") + "&page=$page")
+        val arr = o.optJSONArray("items") ?: JSONArray()
+        return ListPage(
+            (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i)?.let(AnimeItem::parse) },
+            o.optBoolean("hasNextPage", false)
+        )
+    }
+
     suspend fun donghuaList(tab: String, page: Int): ListPage<DonghuaItem> {
         val o = getPublicJson("/api/donghua/list?tab=$tab&page=$page")
         val arr = o.optJSONArray("items") ?: JSONArray()
