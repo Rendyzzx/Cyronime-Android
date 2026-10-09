@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -427,6 +428,10 @@ fun SearchBarField(
     modifier: Modifier = Modifier,
     placeholder: String = "Cari anime"
 ) {
+    // Fokus + keyboard: sebelumnya decorationBox TIDAK memanggil inner() saat
+    // kosong, jadi field tak punya area input dan keyboard tak pernah muncul.
+    val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     Row(
         modifier
             .fillMaxWidth()
@@ -434,6 +439,13 @@ fun SearchBarField(
             .height(48.dp)
             .clip(RoundedCornerShape(Cy.RadiusChip))
             .background(Cy.Surface2)
+            .clickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                indication = null
+            ) {
+                focusRequester.requestFocus()
+                keyboard?.show()
+            }
             .padding(start = 16.dp, end = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -454,18 +466,13 @@ fun SearchBarField(
             cursorBrush = androidx.compose.ui.graphics.SolidColor(Cy.Accent),
             modifier = Modifier
                 .weight(1f)
-                .padding(start = 14.dp),
+                .padding(start = 14.dp)
+                .focusRequester(focusRequester),
             decorationBox = { inner ->
-                if (value.isEmpty()) {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable { },
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
+                    if (value.isEmpty()) {
                         Text(placeholder, color = Cy.Text2, fontSize = 15.sp)
                     }
-                } else {
                     inner()
                 }
             }
