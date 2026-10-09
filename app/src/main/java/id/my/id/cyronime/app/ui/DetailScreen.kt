@@ -124,7 +124,9 @@ fun DetailScreen(nav: NavController, type: String, slug: String) {
     val score = animeDetail?.score ?: donghuaDetail?.rating
     val genres = animeDetail?.genres ?: donghuaDetail?.genres ?: emptyList()
 
-    val recRows = remember(animeDetail) { animeDetail?.recommended?.take(4)?.chunked(2) ?: emptyList() }
+    // 6 item: dengan related satu franchise (season/OVA/film) kini relevan
+    // untuk ditampilkan lebih banyak, bukan hanya 4 rekomendasi generik.
+    val recRows = remember(animeDetail) { animeDetail?.recommended?.take(6)?.chunked(2) ?: emptyList() }
 
     LazyColumn(Modifier.fillMaxSize()) {
         // ===== Hero (banner dengan jarak & sudut membulat) =====
@@ -325,7 +327,7 @@ fun DetailScreen(nav: NavController, type: String, slug: String) {
             }
         }
 
-        // ===== Anime Terkait (grid 2 kolom, 4 item) =====
+        // ===== Anime Terkait (grid 2 kolom, 6 item) =====
         val recommended = animeDetail?.recommended
         if (!recommended.isNullOrEmpty()) {
             item { SectionTitle("Anime Terkait") }
