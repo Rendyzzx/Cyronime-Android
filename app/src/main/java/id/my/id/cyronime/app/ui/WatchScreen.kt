@@ -136,8 +136,21 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
             try {
                 val url = Api.resolveServer(serverId)
                 if (url.isNotBlank()) {
-                    streamUrl = url
-                    streamIsEmbed = !isDirectVideo(url)
+                    // URL embed (vidhide/desustream/mega) -> minta backend
+                    // ekstrak direct file (.m3u8/.mp4) supaya diputar
+                    // ExoPlayer native (WebView embed sering layar hitam).
+                    // Gagal ekstrak -> WebView embed seperti sebelumnya.
+                    var target = url
+                    var embed = !isDirectVideo(url)
+                    if (embed) {
+                        val direct = Api.extractStream(serverId)
+                        if (direct != null && isDirectVideo(direct.url)) {
+                            target = direct.url
+                            embed = false
+                        }
+                    }
+                    streamUrl = target
+                    streamIsEmbed = embed
                     allFailed = false
                 } else throw IllegalStateException("empty")
             } catch (_: Exception) {

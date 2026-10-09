@@ -283,6 +283,22 @@ object Api {
         return o.optString("url")
     }
 
+    /**
+     * serverId -> direct file hasil ekstraksi backend (utk ExoPlayer).
+     * null berarti ekstraksi tidak tersedia -> pemanggil fallback WebView
+     * dengan URL embed dari resolveServer(). Response tidak pernah di-cache
+     * (URL direct berumur pendek, token per sesi fetch).
+     */
+    suspend fun extractStream(serverId: String): ExtractedStream? {
+        return try {
+            val o = getJson("/api/anime/stream/" + java.net.URLEncoder.encode(serverId, "UTF-8"))
+            // fallback:"embed" -> tidak ada direct file, client pakai WebView
+            if (o.has("fallback")) null else ExtractedStream.parse(o)
+        } catch (_: Exception) {
+            null  // endpoint tidak ada/gangguan -> WebView seperti biasa
+        }
+    }
+
     /* ---------- aktivitas user ---------- */
 
     suspend fun progressList(): List<WatchProgress> {
