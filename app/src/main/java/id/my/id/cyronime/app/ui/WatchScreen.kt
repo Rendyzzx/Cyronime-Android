@@ -334,9 +334,26 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
             val url = streamUrl
             if (url != null) {
                 if (streamIsEmbed) {
-                    EmbedPlayer(url, onLoaded = { onPlaybackReady() })
-                    // WebView embed tak punya kontrol rotate/fullscreen sendiri
-                    // (mis. Mega) -> sediakan tombol di pojok kanan bawah.
+                    EmbedPlayer(
+                        url,
+                        onLoaded = { onPlaybackReady() },
+                        onFatal = { onPlaybackFatal() }
+                    )
+                    // WebView embed tak punya kontrol sendiri (mis. Mega) ->
+                    // tombol ganti server (kiri) + layar penuh (kanan),
+                    // aktif juga di mode fullscreen/landscape.
+                    Row(
+                        Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(8.dp)
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(Color(0x99_000000))
+                            .clickable { sheetOpen = true }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Server", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    }
                     Box(
                         Modifier
                             .align(Alignment.BottomEnd)
@@ -585,73 +602,6 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
                     }
                 }
 
-                // Sheet kualitas / server (ala SettingsSheet web)
-                if (sheetOpen) {
-                    ModalBottomSheet(
-                        onDismissRequest = { sheetOpen = false },
-                        containerColor = Cy.Surface,
-                        sheetState = rememberModalBottomSheetState()
-                    ) {
-                        Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                            val groups = ep?.qualities ?: emptyList()
-                            if (groups.isNotEmpty()) {
-                                Text("Kualitas", color = Cy.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                                Spacer(Modifier.height(8.dp))
-                                groups.forEach { g ->
-                                    val isActive = activeQuality == g.quality &&
-                                        g.servers.any { it.serverId == activeServerKey }
-                                    Box(
-                                        Modifier
-                                            .fillMaxWidth()
-                                            .clip(RoundedCornerShape(Cy.RadiusChip))
-                                            .background(if (isActive) Cy.Accent else Cy.Surface2)
-                                            .clickable {
-                                                sheetOpen = false
-                                                val s = g.servers.firstOrNull { it.serverId !in failedServers.value }
-                                                    ?: g.servers.firstOrNull() ?: return@clickable
-                                                tryAnimeServer(g.quality, s.serverId, s.title)
-                                            }
-                                            .padding(horizontal = 16.dp, vertical = 12.dp)
-                                    ) {
-                                        Text(
-                                            qualityLabel(g.quality), color = Cy.Text,
-                                            fontSize = 14.sp,
-                                            fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium
-                                        )
-                                    }
-                                    Spacer(Modifier.height(6.dp))
-                                }
-                                Spacer(Modifier.height(8.dp))
-                            }
-                            if (dep != null && dep.servers.isNotEmpty()) {
-                                Text("Server", color = Cy.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                                Spacer(Modifier.height(8.dp))
-                                dep.servers.forEach { s ->
-                                    val isActive = activeServerKey == s.name
-                                    Box(
-                                        Modifier
-                                            .fillMaxWidth()
-                                            .clip(RoundedCornerShape(Cy.RadiusChip))
-                                            .background(if (isActive) Cy.Accent else Cy.Surface2)
-                                            .clickable {
-                                                sheetOpen = false
-                                                useDonghuaServer(s.name, s.url)
-                                            }
-                                            .padding(horizontal = 16.dp, vertical = 12.dp)
-                                    ) {
-                                        Text(
-                                            s.name, color = Cy.Text, fontSize = 14.sp,
-                                            fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium
-                                        )
-                                    }
-                                    Spacer(Modifier.height(6.dp))
-                                }
-                            }
-                            Spacer(Modifier.height(24.dp))
-                        }
-                    }
-                }
-
                 /* ---------- Strip episode horizontal ala EpisodeStrip ---------- */
                 val eps = ep?.episodeList ?: emptyList()
                 if (eps.isNotEmpty()) {
@@ -696,6 +646,78 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
             }
         }
     }
+
+    // Sheet kualitas / server (ala SettingsSheet web). Di LUAR cabang when
+    // supaya bisa dibuka juga saat fullscreen/landscape (fix: dulu sheet
+    // hanya dirender di cabang portrait -> tidak bisa ganti resolusi).
+    if (sheetOpen) {
+        ModalBottomSheet(
+            onDismissRequest = { sheetOpen = false },
+            containerColor = Cy.Surface,
+            sheetState = rememberModalBottomSheetState()
+        ) {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                val groups = ep?.qualities ?: emptyList()
+                if (groups.isNotEmpty()) {
+                    Text("Kualitas", color = Cy.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(8.dp))
+                    groups.forEach { g ->
+                        val isActive = activeQuality == g.quality &&
+                            g.servers.any { it.serverId == activeServerKey }
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(Cy.RadiusChip))
+                                .background(if (isActive) Cy.Accent else Cy.Surface2)
+                                .clickable {
+                                    sheetOpen = false
+                                    val s = g.servers.firstOrNull { it.serverId !in failedServers.value && !isMega(it.title) }
+                                        ?: g.servers.firstOrNull { it.serverId !in failedServers.value }
+                                        ?: g.servers.firstOrNull() ?: return@clickable
+                                    tryAnimeServer(g.quality, s.serverId, s.title)
+                                }
+                                .padding(horizontal = 16.dp, vertical = 12.dp)
+                        ) {
+                            Text(
+                                qualityLabel(g.quality), color = Cy.Text,
+                                fontSize = 14.sp,
+                                fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium
+                            )
+                        }
+                        Spacer(Modifier.height(6.dp))
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+                if (dep != null && dep.servers.isNotEmpty()) {
+                    Text("Server", color = Cy.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(8.dp))
+                    dep.servers.forEach { s ->
+                        val isActive = activeServerKey == s.name
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(Cy.RadiusChip))
+                                .background(if (isActive) Cy.Accent else Cy.Surface2)
+                                .clickable {
+                                    sheetOpen = false
+                                    useDonghuaServer(s.name, s.url)
+                                }
+                                .padding(horizontal = 16.dp, vertical = 12.dp)
+                        ) {
+                            Text(
+                                s.name, color = Cy.Text, fontSize = 14.sp,
+                                fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium
+                            )
+                        }
+                        Spacer(Modifier.height(6.dp))
+                    }
+                }
+                Spacer(Modifier.height(24.dp))
+            }
+        }
+    }
+
+
 }
 
 private fun AnimeEpisode.epsOf(currentId: String): Int? =
@@ -1208,7 +1230,7 @@ private fun fmtTime(s: Double): String {
 /* ---------- Embed player (WebView, padanan iframe web) ---------- */
 
 @Composable
-private fun EmbedPlayer(url: String, onLoaded: () -> Unit = {}) {
+private fun EmbedPlayer(url: String, onLoaded: () -> Unit = {}, onFatal: () -> Unit = {}) {
     // WebView dibuat sekali per halaman; saat halaman ditinggalkan WebView
     // di-pause & di-destroy supaya audio/video tidak lanjut di background
     // dan memorinya tidak bocor (padanan iframe yang ter-unmount di web).
@@ -1252,6 +1274,15 @@ private fun EmbedPlayer(url: String, onLoaded: () -> Unit = {}) {
             }
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, u: String?) { onLoaded() }
+                // Halaman utama gagal dimuat (host mati/blokir) -> anggap server
+                // gagal supaya otomatis pindah ke server lain.
+                override fun onReceivedError(
+                    view: WebView?,
+                    request: android.webkit.WebResourceRequest?,
+                    error: android.webkit.WebResourceError?
+                ) {
+                    if (request?.isForMainFrame == true) onFatal()
+                }
                 // Iklan/redirect pop-under: tahan navigasi ke luar host embed awal.
                 override fun shouldOverrideUrlLoading(
                     view: WebView?, request: android.webkit.WebResourceRequest?
