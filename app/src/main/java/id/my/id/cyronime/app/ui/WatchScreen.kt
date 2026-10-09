@@ -136,7 +136,7 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
     fun tryAnimeServer(quality: String, serverId: String, serverTitle: String) {
         activeQuality = quality
         activeServerKey = serverId
-        statusMessage = "Mencoba $serverTitle (${qualityLabel(quality)})…"
+        statusMessage = "Memuat $serverTitle (${qualityLabel(quality)})…"
         resolving = true
         io.launch {
             try {
@@ -746,7 +746,18 @@ private fun NativePlayer(
                     mapOf("Referer" to referer, "Origin" to referer.trimEnd('/'))
                 else emptyMap()
             )
+        val load = androidx.media3.exoplayer.DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                /* min */ 15_000, /* max */ 50_000,
+                /* bufferForPlayback */ 500, /* afterRebuffer */ 1_500
+            )
+            .build()
+        val bandwidth = androidx.media3.exoplayer.upstream.DefaultBandwidthMeter.Builder(context)
+            .setInitialBitrateEstimate(1_500_000L)
+            .build()
         ExoPlayer.Builder(context)
+            .setLoadControl(load)
+            .setBandwidthMeter(bandwidth)
             .setMediaSourceFactory(
                 androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSource)
             )
@@ -792,19 +803,23 @@ private fun NativePlayer(
         onDispose { player.removeListener(l) }
     }
 
-    // Resume dari posisi terakhir (endpoint sama dengan web), lalu putar
+    // Putar LANGSUNG (prepare sudah jalan); resume diambil paralel dengan
+    // timeout 2 dtk lalu seek bila ada, supaya loading tidak menunggu backend.
     LaunchedEffect(url) {
         if (resumeDone) return@LaunchedEffect
         resumeDone = true
+        player.play()
         if (contentId.isNotBlank()) {
-            val resume = WatchProgressSync.fetchResume(contentId)
+            val resume = kotlinx.coroutines.withTimeoutOrNull(2000) {
+                WatchProgressSync.fetchResume(contentId)
+            }
+            // position/duration dari backend dalam DETIK
             if (resume != null && resume.episodeId == id && resume.position > 10 &&
                 resume.position < resume.duration - 30
             ) {
-                player.seekTo(resume.position.toLong())
+                player.seekTo((resume.position * 1000).toLong())
             }
         }
-        player.play()
     }
 
     // Poll posisi + auto-hide kontrol 3 dtk + simpan progres tiap 5 dtk
@@ -812,18 +827,19 @@ private fun NativePlayer(
         var lastSave = 0L
         while (isActive) {
             delay(500)
-            current = player.currentPosition.toDouble().coerceAtLeast(0.0)
+            // Internal UI & backend pakai DETIK; ExoPlayer pakai milidetik.
+            current = (player.currentPosition / 1000.0).coerceAtLeast(0.0)
             val d = player.duration
-            duration = if (d > 0) d.toDouble() else 0.0
-            buffered = player.bufferedPosition.toDouble().coerceAtLeast(0.0)
+            duration = if (d > 0) d / 1000.0 else 0.0
+            buffered = (player.bufferedPosition / 1000.0).coerceAtLeast(0.0)
             val now = System.currentTimeMillis()
             if (playing && controlsVisible && controlsShownAt > 0 && now - controlsShownAt > 3000) {
                 controlsVisible = false
             }
             if (playing && duration > 0 && contentId.isNotBlank() && now - lastSave >= 5000) {
                 lastSave = now
-                val pos = player.currentPosition
-                val dur = player.duration
+                val pos = player.currentPosition / 1000
+                val dur = player.duration / 1000
                 if (dur > 0) {
                     io.launch {
                         WatchProgressSync.save(
@@ -972,18 +988,16 @@ private fun NativePlayer(
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = 10.dp)
             ) {
-                // Baris 1: Prev / -10 / Play / +10 / Next
+                // Baris 1: Prev / -10 / Play / +10 / Next (slot seragam 48dp, simetris)
                 Row(
                     Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
+                    horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     SmallPlayerButton(
                         Icons.Filled.SkipPrevious, enabled = prevId != null
                     ) { nav.navigate("watch/$type/$prevId") { popUpTo("watch/$type/$id") { inclusive = true } } }
-                    Spacer(Modifier.width(10.dp))
                     SmallPlayerButton(Icons.Filled.Replay10) { skip(-10) }
-                    Spacer(Modifier.width(10.dp))
                     Box(
                         Modifier
                             .size(56.dp)
@@ -998,54 +1012,53 @@ private fun NativePlayer(
                             tint = Cy.Navy, modifier = Modifier.size(30.dp)
                         )
                     }
-                    Spacer(Modifier.width(10.dp))
                     SmallPlayerButton(Icons.Filled.Forward10) { skip(10) }
-                    Spacer(Modifier.width(10.dp))
                     SmallPlayerButton(
                         Icons.Filled.SkipNext, enabled = nextId != null
                     ) { nav.navigate("watch/$type/$nextId") { popUpTo("watch/$type/$id") { inclusive = true } } }
                 }
-                Spacer(Modifier.height(10.dp))
-                // Baris 2: pill kualitas + kecepatan + layar penuh
+                Spacer(Modifier.height(6.dp))
+                // Baris 2: waktu (kiri) + kualitas / kecepatan / layar penuh (kanan), tinggi seragam 36dp
                 Row(
                     Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    PillButton(qualityLabel) { onOpenSettings() }
-                    Spacer(Modifier.width(4.dp))
-                    PillButton(
-                        if (speed % 1.0f == 0f) "${speed.toInt()}x" else "${"%.2f".format(speed).trimEnd('0').trimEnd('.')}x"
+                    Text("${fmtTime(current)} / ${fmtTime(duration)}", color = Cy.Text, fontSize = 12.sp)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        speed = when (speed) {
-                            0.5f -> 0.75f; 0.75f -> 1.0f; 1.0f -> 1.25f
-                            1.25f -> 1.5f; 1.5f -> 2.0f; else -> 0.5f
+                        PillButton(qualityLabel) { onOpenSettings() }
+                        PillButton(
+                            if (speed % 1.0f == 0f) "${speed.toInt()}x" else "${"%.2f".format(speed).trimEnd('0').trimEnd('.')}x"
+                        ) {
+                            speed = when (speed) {
+                                0.5f -> 0.75f; 0.75f -> 1.0f; 1.0f -> 1.25f
+                                1.25f -> 1.5f; 1.5f -> 2.0f; else -> 0.5f
+                            }
+                        }
+                        Box(
+                            Modifier
+                                .size(36.dp)
+                                .clip(RoundedCornerShape(Cy.RadiusChip))
+                                .background(Color(0x1A_FEFDFF))
+                                .clickable { isFullscreen = !isFullscreen; onFullscreen() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                if (isFullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
+                                "Layar penuh", tint = Cy.Text, modifier = Modifier.size(20.dp)
+                            )
                         }
                     }
-                    Spacer(Modifier.width(4.dp))
-                    Box(
-                        Modifier
-                            .size(36.dp)
-                            .clip(RoundedCornerShape(Cy.RadiusChip))
-                            .background(Color(0x1A_FEFDFF))
-                            .clickable { isFullscreen = !isFullscreen; onFullscreen() },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            if (isFullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
-                            "Layar penuh", tint = Cy.Text, modifier = Modifier.size(20.dp)
-                        )
-                    }
                 }
-                Spacer(Modifier.height(8.dp))
-                // Baris 3: waktu + seekbar tipis
-                Text("${fmtTime(current)} / ${fmtTime(duration)}", color = Cy.Text, fontSize = 12.sp)
                 SeekBar(
                     progress = current,
                     duration = duration,
                     buffered = buffered
                 ) { pos ->
-                    player.seekTo(pos.toLong())
+                    player.seekTo((pos * 1000).toLong())
                     current = pos
                     controlsShownAt = System.currentTimeMillis()
                 }
@@ -1060,13 +1073,19 @@ private fun SmallPlayerButton(
     enabled: Boolean = true,
     onClick: () -> Unit
 ) {
-    Icon(
-        icon, null,
-        tint = if (enabled) Cy.Text else Color(0x4D_FEFDFF),
-        modifier = Modifier
-            .size(24.dp)
-            .clickable(enabled = enabled) { onClick() }
-    )
+    Box(
+        Modifier
+            .size(48.dp)
+            .clip(RoundedCornerShape(50))
+            .clickable(enabled = enabled) { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            icon, null,
+            tint = if (enabled) Cy.Text else Color(0x4D_FEFDFF),
+            modifier = Modifier.size(28.dp)
+        )
+    }
 }
 
 @Composable
