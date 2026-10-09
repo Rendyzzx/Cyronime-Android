@@ -29,6 +29,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -57,6 +58,7 @@ import com.google.firebase.messaging.FirebaseMessaging
 import id.my.id.cyronime.app.BuildConfig
 import id.my.id.cyronime.app.Prefs
 import id.my.id.cyronime.app.data.Api
+import id.my.id.cyronime.app.data.HttpError
 import id.my.id.cyronime.app.data.Me
 import id.my.id.cyronime.app.data.NotifyPrefs
 import kotlinx.coroutines.launch
@@ -326,17 +328,33 @@ fun SettingsScreen(nav: NavController, onLoggedOut: () -> Unit) {
 
         /* --- Perangkat --- */
         SettingsSectionLabel("Perangkat", "ID: ${Prefs.deviceId(context).take(18)}…")
+        var syncStatus by remember { mutableStateOf<String?>(null) }
         TextButton(onClick = {
-            FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
-                Prefs.setFcmToken(context, token)
-                io.launch {
-                    try {
-                        Api.registerDevice(context, token)
-                    } catch (_: Exception) {
+            syncStatus = "Mengambil token FCM…"
+            val notifOk = androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()
+            FirebaseMessaging.getInstance().token
+                .addOnFailureListener { e ->
+                    syncStatus = "GAGAL ambil token FCM: ${e.javaClass.simpleName}: ${e.message?.take(120)}"
+                }
+                .addOnSuccessListener { token ->
+                    Prefs.setFcmToken(context, token)
+                    io.launch {
+                        syncStatus = try {
+                            Api.registerDevice(context, token)
+                            "BERHASIL terdaftar di server" +
+                                if (notifOk) "." else ", tapi izin notifikasi MATI di pengaturan HP."
+                        } catch (e: HttpError) {
+                            "GAGAL daftar ke server: HTTP ${e.code}" +
+                                if (e.code == 401) " (sesi login tidak dikenali)" else ""
+                        } catch (e: Exception) {
+                            "GAGAL daftar ke server: ${e.javaClass.simpleName}: ${e.message?.take(120)}"
+                        }
                     }
                 }
-            }
         }) { Text("Sinkronkan ulang notifikasi") }
+        syncStatus?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
 
         Spacer(Modifier.height(24.dp))
 
