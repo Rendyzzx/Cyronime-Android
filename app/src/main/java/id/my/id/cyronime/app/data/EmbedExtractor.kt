@@ -25,9 +25,16 @@ object EmbedExtractor {
     private val http = OkHttpClient.Builder()
         .followRedirects(true)
         .followSslRedirects(true)
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
+        .connectTimeout(8, TimeUnit.SECONDS)
+        .readTimeout(10, TimeUnit.SECONDS)
+        // Batas total per host — host mati/hang harus cepat "kalah" di race.
+        .callTimeout(15, TimeUnit.SECONDS)
         .build()
+
+    /** UA desktop — beberapa clone VidHide hanya memberi player ke UA desktop. */
+    private const val UA_DESKTOP =
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+            "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 
     data class Result(val url: String, val type: String, val host: String, val referer: String)
 
@@ -59,12 +66,13 @@ object EmbedExtractor {
         return Result(b.url, b.type, host, "$origin/")
     }
 
-    private fun fetch(url: String): Pair<String, String>? = try {
-        val req = Request.Builder().url(url)
-            .header("User-Agent", UA)
+    private fun fetchOnce(url: String, ua: String): Pair<String, String>? = try {
+        val origin = try { URI(url).let { "${it.scheme}://${it.host}" } } catch (_: Exception) { null }
+        val b = Request.Builder().url(url)
+            .header("User-Agent", ua)
             .header("Accept", "text/html,*/*")
-            .build()
-        http.newCall(req).execute().use { r ->
+        if (origin != null) b.header("Referer", "$origin/")
+        http.newCall(b.build()).execute().use { r ->
             if (!r.isSuccessful) return null
             val body = r.body ?: return null
             val bytes = body.bytes()
@@ -72,6 +80,10 @@ object EmbedExtractor {
             String(bytes, Charsets.UTF_8) to r.request.url.toString()
         }
     } catch (_: Exception) { null }
+
+    /** Coba UA seluler dulu, lalu UA desktop — beberapa host hanya ramah ke salah satunya. */
+    private fun fetch(url: String): Pair<String, String>? =
+        fetchOnce(url, UA) ?: fetchOnce(url, UA_DESKTOP)
 
     /* ---------------- unpack Dean Edwards packer ---------------- */
 

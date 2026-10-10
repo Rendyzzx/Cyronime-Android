@@ -46,6 +46,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material3.IconButton
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -84,9 +85,12 @@ import id.my.id.cyronime.app.data.AnimeEpisode
 import id.my.id.cyronime.app.data.AnimeServerOption
 import id.my.id.cyronime.app.data.Api
 import id.my.id.cyronime.app.data.DonghuaEpisode
+import id.my.id.cyronime.app.data.ExtractedStream
 import id.my.id.cyronime.app.data.DonghuaStreamServer
 import id.my.id.cyronime.app.data.EmbedExtractor
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 
@@ -158,8 +162,65 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
 
     fun epsOf(): Int? = anime?.episodeList?.firstOrNull { it.episodeId == id }?.eps
 
-    /** Coba satu server anime; gagal -> fallback ke server lain (kualitas sama dulu). */
     val io = rememberIoScope()
+    /**
+     * Lomba paralel antar server anime: resolve+ekstrak SEMUA kandidat
+     * sekaligus; server pertama yang menghasilkan direct file menang dan
+     * langsung diputar native. Lama-lama karena dulu pencarian server
+     * berurutan (tiap host mati menyita 15-25 dtk). Kualitas preferen
+     * tetap diutamakan lewat urutan pool. null = semua gagal (pemanggil
+     * menentukan fallback). Race dipakai di fallback & pemilihan awal.
+     */
+    fun raceAnimePool(
+        pool: List<Pair<String, AnimeServerOption>>,
+        preferQuality: String?,
+        onAllLost: (() -> Unit)? = null
+    ): Boolean {
+        val ranked = pool.sortedBy { rank(it.second.title) }
+        val preferred = ranked.filter { preferQuality == null || it.first == preferQuality }
+        val rest = ranked.filter { it !in preferred }
+        val ordered = preferred + rest
+        if (ordered.isEmpty()) return false
+        statusMessage = "Mencari server tercepat…"
+        resolving = true
+        val won = CompletableDeferred<Triple<String, AnimeServerOption, ExtractedStream>>()
+        for ((q, sv) in ordered) {
+            io.launch {
+                if (!won.isActive) return@launch
+                try {
+                    val url = Api.resolveServer(sv.serverId)
+                    if (url.isBlank()) return@launch
+                    val direct = if (isDirectVideo(url)) {
+                        ExtractedStream(url, "", "", "")
+                    } else Api.extractStream(url, sv.serverId) ?: return@launch
+                    if (isDirectVideo(direct.url)) won.complete(Triple(q, sv, direct))
+                } catch (_: Exception) { }
+            }
+        }
+        io.launch {
+            try {
+                val w = withTimeoutOrNull(15_000) { won.await() }
+                if (w != null) {
+                    activeQuality = w.first
+                    activeServerKey = w.second.serverId
+                    streamUrl = w.third.url
+                    streamIsEmbed = false
+                    streamReferer = w.third.referer
+                    allFailed = false
+                } else {
+                    onAllLost?.invoke()
+                }
+            } finally {
+                resolving = false
+                if (streamUrl != null) statusMessage = null
+            }
+        }
+        // Hasil race diterapkan lewat state; TRUE berarti race berjalan dan
+        // pemanggil tidak perlu melakukan apa pun lagi (fallback lewat onAllLost).
+        return true
+    }
+
+    /** Coba satu server anime; gagal -> fallback ke server lain (kualitas sama dulu). */
 
     fun tryAnimeServer(quality: String, serverId: String, serverTitle: String) {
         activeQuality = quality
@@ -182,6 +243,21 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
                             target = direct.url
                             embed = false
                             streamReferer = direct.referer
+                        } else {
+                            // Ekstraksi server ini gagal. Dulu: langsung WebView
+                            // (sering layar hitam & tanpa fallback otomatis).
+                            // Sekarang: lomba paralel server lain dulu — server
+                            // pertama yang bisa diekstrak menang; semua gagal ->
+                            // WebView server pilihan user (perilaku lama).
+                            val pool = (anime?.qualities ?: emptyList())
+                                .flatMap { g -> g.servers.map { g.quality to it } }
+                                .filter { it.second.serverId != serverId }
+                            raceAnimePool(pool, quality) {
+                                streamUrl = url
+                                streamIsEmbed = true
+                                allFailed = false
+                            }
+                            return@launch
                         }
                     }
                     streamUrl = target
@@ -257,33 +333,57 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
      * tidak bisa dilewati (mis. terenkripsi) tanpa menandainya gagal.
      * Semua gagal -> server pertama via WebView (perilaku lama).
      */
-    fun pickDonghuaServer(servers: List<DonghuaStreamServer>) {
+    /**
+     * Lomba paralel antar server donghua: ekstraksi SEMUA kandidat sekaligus,
+     * server pertama yang menghasilkan direct file menang (host mati tidak
+     * lagi menyita waktu karena tidak menunggu berurutan). Deadline 12 dtk;
+     * tanpa pemenang -> WebView server pertama (bila diizinkan) atau gagal.
+     */
+    fun raceDonghuaServers(servers: List<DonghuaStreamServer>, allowWebViewFallback: Boolean) {
         val first = servers.firstOrNull() ?: run { allFailed = true; return }
-        val candidates = servers.filter { EmbedExtractor.isExtractable(it.url) }
-        val ordered = (candidates + servers.filter { it !in candidates }).distinctBy { it.name }
-        statusMessage = "Mencari server terbaik…"
+        val extractable = servers.filter { EmbedExtractor.isExtractable(it.url) }
+        if (extractable.isEmpty()) {
+            if (allowWebViewFallback) useDonghuaServer(first.name, first.url, skipExtraction = true)
+            else { statusMessage = null; allFailed = true }
+            return
+        }
+        statusMessage = "Mencari server tercepat…"
         resolving = true
+        val won = CompletableDeferred<Pair<String, ExtractedStream>>()
+        for (srv in extractable) {
+            io.launch {
+                if (!won.isActive) return@launch
+                val direct = try { Api.extractDonghuaStream(srv.url) } catch (_: Exception) { null }
+                if (direct != null && isDirectVideo(direct.url)) {
+                    won.complete(Pair(srv.name, direct))
+                }
+            }
+        }
         io.launch {
             try {
-                for (srv in ordered) {
-                    activeServerKey = srv.name
-                    val direct = try { Api.extractDonghuaStream(srv.url) } catch (_: Exception) { null }
-                    if (direct != null && isDirectVideo(direct.url)) {
-                        activeQuality = null
-                        streamUrl = direct.url
-                        streamIsEmbed = false
-                        streamReferer = direct.referer
-                        allFailed = false
-                        return@launch
-                    }
+                val w = withTimeoutOrNull(12_000) { won.await() }
+                if (w != null) {
+                    activeQuality = null
+                    activeServerKey = w.first
+                    streamUrl = w.second.url
+                    streamIsEmbed = false
+                    streamReferer = w.second.referer
+                    allFailed = false
+                } else if (allowWebViewFallback) {
+                    useDonghuaServer(first.name, first.url, skipExtraction = true)
+                } else {
+                    streamUrl = null
+                    allFailed = true
                 }
-                // Tidak ada yang bisa native -> server pertama lewat WebView.
-                useDonghuaServer(first.name, first.url, skipExtraction = true)
             } finally {
                 resolving = false
                 if (streamUrl != null) statusMessage = null
             }
         }
+    }
+
+    fun pickDonghuaServer(servers: List<DonghuaStreamServer>) {
+        raceDonghuaServers(servers, allowWebViewFallback = true)
     }
 
     /** Dipanggil NativePlayer saat frame pertama siap: hapus pil "Mencoba…". */
@@ -297,10 +397,17 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
             failedServers.value = failedServers.value + key
             val remaining = groups.flatMap { g -> g.servers.map { g.quality to it } }
                 .filter { (_, sv) -> sv.serverId !in failedServers.value }
-            val next = pickBest(remaining, activeQuality)
-            if (next != null) {
-                streamUrl = null
-                tryAnimeServer(next.first, next.second.serverId, next.second.title)
+            streamUrl = null
+            if (remaining.isNotEmpty()) {
+                // Dulu: coba server berikutnya SATU PER SATU (tiap host mati
+                // menyita 15-25 dtk -> total bisa menit). Sekarang: lomba
+                // paralel semua server tersisa, pemenang pertama langsung
+                // diputar; semua kalah -> WebView server terbaik tersisa.
+                raceAnimePool(remaining, activeQuality) {
+                    val best = pickBest(remaining, activeQuality)
+                    if (best != null) tryAnimeServer(best.first, best.second.serverId, best.second.title)
+                    else { statusMessage = null; allFailed = true }
+                }
             } else {
                 statusMessage = null
                 allFailed = true
@@ -308,8 +415,15 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
         } else {
             val servers = donghua?.servers ?: emptyList()
             failedServers.value = failedServers.value + key
-            val next = servers.firstOrNull { it.name !in failedServers.value }
-            if (next != null) useDonghuaServer(next.name, next.url) else allFailed = true
+            val remaining = servers.filter { it.name !in failedServers.value }
+            streamUrl = null
+            if (remaining.isNotEmpty()) {
+                // Sama seperti anime: lomba paralel, jangan sekuensial.
+                raceDonghuaServers(remaining, allowWebViewFallback = true)
+            } else {
+                statusMessage = null
+                allFailed = true
+            }
         }
     }
 
@@ -464,8 +578,8 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
                         onFatal = { onPlaybackFatal() }
                     )
                     // WebView embed tak punya kontrol sendiri (mis. Mega) ->
-                    // tombol ganti server (kiri) + layar penuh (kanan),
-                    // aktif juga di mode fullscreen/landscape.
+                    // tombol ganti server (kiri) + prev/next episode (tengah)
+                    // + layar penuh (kanan), aktif juga di mode fullscreen/landscape.
                     Row(
                         Modifier
                             .align(Alignment.BottomStart)
@@ -477,6 +591,34 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text("Server", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                    Row(
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 8.dp)
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(Color(0x99_000000))
+                            .padding(horizontal = 4.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Episode sebelumnya / berikutnya — sama dengan kontrol
+                        // NativePlayer, supaya mode WebView pun juga.
+                        IconButton(
+                            onClick = { nav.navigate("watch/$type/$prevId") { popUpTo("watch/$type/$id") { inclusive = true } } },
+                            enabled = prevId != null,
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(Icons.Filled.SkipPrevious, "Episode sebelumnya",
+                                tint = if (prevId != null) Color.White else Color(0x4D_FEFDFF))
+                        }
+                        IconButton(
+                            onClick = { nav.navigate("watch/$type/$nextId") { popUpTo("watch/$type/$id") { inclusive = true } } },
+                            enabled = nextId != null,
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(Icons.Filled.SkipNext, "Episode berikutnya",
+                                tint = if (nextId != null) Color.White else Color(0x4D_FEFDFF))
+                        }
                     }
                     Box(
                         Modifier
