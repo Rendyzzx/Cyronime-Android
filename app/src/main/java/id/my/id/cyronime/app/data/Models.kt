@@ -363,16 +363,18 @@ data class SearchResults(
 
 data class NotifyPrefs(
     val newEpisode: Boolean,
+    val newAnime: Boolean,
     val favorite: Boolean,
     val announcement: Boolean,
     val maintenance: Boolean,
     val appUpdate: Boolean
 ) {
     companion object {
-        val DEFAULT = NotifyPrefs(true, true, true, true, true)
+        val DEFAULT = NotifyPrefs(true, true, true, true, true, true)
 
         fun parse(o: JSONObject) = NotifyPrefs(
             newEpisode = o.optBoolean("newEpisode", true),
+            newAnime = o.optBoolean("newAnime", true),
             favorite = o.optBoolean("favorite", true),
             announcement = o.optBoolean("announcement", true),
             maintenance = o.optBoolean("maintenance", true),

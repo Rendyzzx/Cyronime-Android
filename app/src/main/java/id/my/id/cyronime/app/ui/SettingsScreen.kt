@@ -319,6 +319,7 @@ fun SettingsScreen(nav: NavController, onLoggedOut: () -> Unit) {
         SettingsSectionLabel("Notifications", "Tersimpan di akun Anda — berlaku juga di Web.")
         Spacer(Modifier.height(8.dp))
         PrefToggle("Episode baru", prefs.newEpisode, loading) { prefs = prefs.copy(newEpisode = it); togglePref("newEpisode", it) }
+        PrefToggle("Anime baru (judul)", prefs.newAnime, loading) { prefs = prefs.copy(newAnime = it); togglePref("newAnime", it) }
         PrefToggle("Anime favorit", prefs.favorite, loading) { prefs = prefs.copy(favorite = it); togglePref("favorite", it) }
         PrefToggle("Pengumuman Cyronime", prefs.announcement, loading) { prefs = prefs.copy(announcement = it); togglePref("announcement", it) }
         PrefToggle("Maintenance", prefs.maintenance, loading) { prefs = prefs.copy(maintenance = it); togglePref("maintenance", it) }

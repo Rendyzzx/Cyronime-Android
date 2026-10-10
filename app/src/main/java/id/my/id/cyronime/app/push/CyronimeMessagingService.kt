@@ -16,6 +16,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * FCM service — register token ke backend setelah token tersedia, tampilkan
@@ -51,6 +52,7 @@ class CyronimeMessagingService : FirebaseMessagingService() {
         val title = message.notification?.title ?: data["title"] ?: "Cyronime"
         val body = message.notification?.body ?: data["body"] ?: ""
         val deepLink = data["deepLink"] ?: data["url"]
+        val imageUrl = message.notification?.imageUrl?.toString() ?: data["image"]
 
         val intent = Intent(this, MainActivity::class.java).apply {
             action = Intent.ACTION_VIEW
@@ -64,20 +66,44 @@ class CyronimeMessagingService : FirebaseMessagingService() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val notification = NotificationCompat.Builder(this, CyronimeApp.CHANNEL_GENERAL)
+        // Foto (poster dsb.): unduh di latar belakang, lalu tampilkan.
+        scope.launch {
+            val builder = NotificationCompat.Builder(this@CyronimeMessagingService, CyronimeApp.CHANNEL_GENERAL)
             .setSmallIcon(R.drawable.ic_launcher)
             .setContentTitle(title)
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setAutoCancel(true)
             .setContentIntent(pending)
-            .build()
 
-        try {
-            NotificationManagerCompat.from(this)
-                .notify((title + System.currentTimeMillis() / 60_000).hashCode(), notification)
-        } catch (_: SecurityException) {
-            // Permission notifikasi belum diberikan — abaikan.
+            val img = imageUrl
+            if (!img.isNullOrBlank()) {
+            try {
+                val bitmap = withContext(Dispatchers.IO) {
+                    val conn = java.net.URL(img).openConnection() as java.net.HttpURLConnection
+                    conn.connectTimeout = 8000
+                    conn.readTimeout = 8000
+                    conn.instanceFollowRedirects = true
+                    conn.getInputStream().use { android.graphics.BitmapFactory.decodeStream(it) }
+                }
+                if (bitmap != null) {
+                    builder.setStyle(
+                        NotificationCompat.BigPictureStyle()
+                            .bigPicture(bitmap)
+                            .setBigContentTitle(title)
+                            .setSummaryText(body)
+                    )
+                }
+            } catch (_: Exception) {
+            }
+        }
+
+            try {
+                NotificationManagerCompat.from(this@CyronimeMessagingService)
+                    .notify((title + System.currentTimeMillis() / 60_000).hashCode(), builder.build())
+            } catch (_: SecurityException) {
+                // Permission notifikasi belum diberikan — abaikan.
+            }
         }
     }
 
