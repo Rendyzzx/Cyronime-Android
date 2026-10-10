@@ -1,12 +1,14 @@
 package id.my.id.cyronime.app.ui
 
 import id.my.id.cyronime.app.AppSettings
+import id.my.id.cyronime.app.BuildConfig
 import id.my.id.cyronime.app.R
 
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.pm.ActivityInfo
 import android.webkit.WebView
+import android.widget.Toast
 import android.webkit.WebViewClient
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -111,6 +113,9 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
     // Urutan slug episode donghua (dari detail judul) — cadangan prev/next
     // bila server tidak mengirim prevEpisodeSlug/nextEpisodeSlug.
     var donghuaSlugs by remember { mutableStateOf<List<String>>(emptyList()) }
+    // Cadangan daftar episode anime dari detail judul, bila episode tidak
+    // membawa prev/next maupun episodeList (beberapa judul upstream begini).
+    var animeIdsFallback by remember { mutableStateOf<List<String>>(emptyList()) }
     var favorite by remember { mutableStateOf(false) }
 
     // Sumber aktif
@@ -437,6 +442,18 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
                 if (type == "anime") {
                     val ep = Api.animeEpisode(id)
                     anime = ep
+                    // Cadangan navigasi: bila tidak ada prev/next & episodeList
+                    // kosong, ambil daftar episode dari detail judul (best-effort).
+                    if (ep.prevEpisodeId.isNullOrBlank() && ep.nextEpisodeId.isNullOrBlank()
+                        && ep.episodeList.isEmpty() && ep.animeId.isNotBlank()) {
+                        io.launch {
+                            try {
+                                animeIdsFallback = Api.animeDetail(ep.animeId).episodeList
+                                    .sortedBy { it.eps ?: Int.MAX_VALUE }
+                                    .map { it.episodeId }
+                            } catch (_: Exception) { }
+                        }
+                    }
                     val ordered = ep.qualities.flatMap { g -> g.servers.map { g.quality to it } }
                     // Awal: server terbaik di SEMUA kualitas (vidhide dulu), lalu
                     // user bisa ganti kualitas lewat menu.
@@ -526,7 +543,9 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
     // Prioritas: nilai dari server; kalau kosong, cari tetangga di daftar
     // episode (anime: episodeList berurut naik; donghua: slug dari detail).
     val orderedIds: List<String> = when {
-        ep != null -> ep.episodeList.sortedBy { it.eps ?: Int.MAX_VALUE }.map { it.episodeId }
+        ep != null && ep.episodeList.isNotEmpty() ->
+            ep.episodeList.sortedBy { it.eps ?: Int.MAX_VALUE }.map { it.episodeId }
+        ep != null -> animeIdsFallback
         else -> donghuaSlugs
     }
     val curIdx = orderedIds.indexOf(id)
@@ -535,6 +554,16 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
     val nextId = (ep?.nextEpisodeId ?: dep?.nextEpisodeSlug)?.takeIf { it.isNotBlank() }
         ?: orderedIds.getOrNull(curIdx + 1).takeIf { curIdx >= 0 }
     val contentId = ep?.animeId ?: dep?.donghuaSlug ?: ""
+
+    /** Feedback instan saat tombol prev/next ditekan — supaya terasa responsif
+     *  sebelum episode baru termuat (server search butuh beberapa detik). */
+    fun gotoEpisode(target: String?) {
+        if (target.isNullOrBlank()) return
+        Toast.makeText(ctx, "Pindah episode…", Toast.LENGTH_SHORT).show()
+        nav.navigate("watch/$type/$target") {
+            popUpTo("watch/$type/$id") { inclusive = true }
+        }
+    }
 
     // Orientasi layar penuh (ala useFullscreenLock web) + mode immersive:
     // sembunyikan status bar (jam/wifi) & navigation bar saat fullscreen.
@@ -604,7 +633,7 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
                         // Episode sebelumnya / berikutnya — sama dengan kontrol
                         // NativePlayer, supaya mode WebView pun juga.
                         IconButton(
-                            onClick = { nav.navigate("watch/$type/$prevId") { popUpTo("watch/$type/$id") { inclusive = true } } },
+                            onClick = { gotoEpisode(prevId) },
                             enabled = prevId != null,
                             modifier = Modifier.size(36.dp)
                         ) {
@@ -612,7 +641,7 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
                                 tint = if (prevId != null) Color.White else Color(0x4D_FEFDFF))
                         }
                         IconButton(
-                            onClick = { nav.navigate("watch/$type/$nextId") { popUpTo("watch/$type/$id") { inclusive = true } } },
+                            onClick = { gotoEpisode(nextId) },
                             enabled = nextId != null,
                             modifier = Modifier.size(36.dp)
                         ) {
@@ -825,6 +854,11 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
                     Spacer(Modifier.height(6.dp))
                     Text(ep?.title ?: "", color = Cy.Text2, fontSize = 16.sp)
                 }
+                // Penanda build — memudahkan memastikan versi yang dipakai user.
+                Text(
+                    "v" + BuildConfig.VERSION_NAME,
+                    color = Cy.Text2, fontSize = 11.sp, fontWeight = FontWeight.Medium
+                )
 
                 // Aksi: simpan favorit + pilih server
                 Spacer(Modifier.height(16.dp))
@@ -1315,7 +1349,10 @@ private fun NativePlayer(
                 ) {
                     SmallPlayerButton(
                         Icons.Filled.SkipPrevious, enabled = prevId != null
-                    ) { nav.navigate("watch/$type/$prevId") { popUpTo("watch/$type/$id") { inclusive = true } } }
+                    ) {
+                        Toast.makeText(context, "Pindah episode…", Toast.LENGTH_SHORT).show()
+                        nav.navigate("watch/$type/$prevId") { popUpTo("watch/$type/$id") { inclusive = true } }
+                    }
                     SmallPlayerButton(Icons.Filled.Replay10) { skip(-10) }
                     Box(
                         Modifier
@@ -1334,7 +1371,10 @@ private fun NativePlayer(
                     SmallPlayerButton(Icons.Filled.Forward10) { skip(10) }
                     SmallPlayerButton(
                         Icons.Filled.SkipNext, enabled = nextId != null
-                    ) { nav.navigate("watch/$type/$nextId") { popUpTo("watch/$type/$id") { inclusive = true } } }
+                    ) {
+                        Toast.makeText(context, "Pindah episode…", Toast.LENGTH_SHORT).show()
+                        nav.navigate("watch/$type/$nextId") { popUpTo("watch/$type/$id") { inclusive = true } }
+                    }
                 }
                 Spacer(Modifier.height(6.dp))
                 // Baris 2: waktu (kiri) + kualitas / kecepatan / layar penuh (kanan), tinggi seragam 36dp
