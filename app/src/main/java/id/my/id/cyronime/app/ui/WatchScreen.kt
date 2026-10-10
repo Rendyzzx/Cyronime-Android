@@ -781,8 +781,17 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
     // movableContent: PlayerBox boleh pindah posisi layout (portrait ->
     // fullscreen) TANPA dibuat ulang — tanpa ini ExoPlayer/WebView di-dispose
     // tiap toggle fullscreen dan video mundur ke detik awal.
+    // BUG tombol prev/next: `remember { movableContentOf { PlayerBox(..) } }`
+    // tanpa key MEMBEKUKAN lambda dari komposisi pertama. PlayerBox menangkap
+    // prevId/nextId (dan state lain) dari saat itu — yaitu null, sebelum
+    // episode selesai dimuat — dan tak pernah diperbarui, jadi tombol selalu
+    // redup. Solusi: movableContent hanya memanggil `latestPlayerBox`, yang
+    // selalu menunjuk PlayerBox terbaru (rememberUpdatedState).
+    val latestPlayerBox by androidx.compose.runtime.rememberUpdatedState<@Composable (Modifier) -> Unit>(
+        { mod -> PlayerBox(mod) }
+    )
     val playerBox = remember {
-        androidx.compose.runtime.movableContentOf<Modifier> { mod -> PlayerBox(mod) }
+        androidx.compose.runtime.movableContentOf<Modifier> { mod -> latestPlayerBox(mod) }
     }
 
     when {
