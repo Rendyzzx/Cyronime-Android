@@ -47,6 +47,10 @@ object Prefs {
     fun portalChosen(ctx: Context): Boolean = sp(ctx).getBoolean(KEY_PORTAL_CHOSEN, false)
     fun setPortalChosen(ctx: Context, v: Boolean) { sp(ctx).edit().putBoolean(KEY_PORTAL_CHOSEN, v).apply() }
 
+    /** Izin notifikasi (Android 13+) cukup diminta sekali; jangan menanyakan ulang tiap app dibuka. */
+    fun notifPermissionAsked(ctx: Context): Boolean = sp(ctx).getBoolean("notif_perm_asked", false)
+    fun setNotifPermissionAsked(ctx: Context, v: Boolean) { sp(ctx).edit().putBoolean("notif_perm_asked", v).apply() }
+
     fun onboardingDone(ctx: Context): Boolean = sp(ctx).getBoolean(KEY_ONB_DONE, false)
     fun setOnboardingDone(ctx: Context, v: Boolean) { sp(ctx).edit().putBoolean(KEY_ONB_DONE, v).apply() }
 }

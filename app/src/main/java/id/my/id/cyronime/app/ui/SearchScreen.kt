@@ -33,6 +33,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import id.my.id.cyronime.app.AppSettings
 import id.my.id.cyronime.app.data.AnimeItem
 import id.my.id.cyronime.app.data.DonghuaItem
 import kotlinx.coroutines.launch
@@ -83,8 +84,9 @@ fun SearchScreen(nav: NavController) {
         if (q == query.trim()) doSearch()
     }
 
-    val animeRows = remember(results) { results?.anime?.chunked(3) ?: emptyList() }
-    val donghuaRows = remember(results) { results?.donghua?.chunked(3) ?: emptyList() }
+    val cols = AppSettings.gridColumns
+    val animeRows = remember(results, cols) { results?.anime?.chunked(cols) ?: emptyList() }
+    val donghuaRows = remember(results, cols) { results?.donghua?.chunked(cols) ?: emptyList() }
 
     LazyColumn(Modifier.fillMaxSize()) {
         item {
@@ -94,7 +96,7 @@ fun SearchScreen(nav: NavController) {
                     value = query,
                     onValueChange = { query = it },
                     onSubmit = { doSearch() },
-                    placeholder = "Cari anime"
+                    placeholder = tr("Cari anime", "Search anime")
                 )
                 Spacer(Modifier.height(16.dp))
             }
@@ -121,7 +123,7 @@ fun SearchScreen(nav: NavController) {
                     Column(Modifier.padding(horizontal = 16.dp)) {
                         Text(
                             buildAnnotatedString {
-                                append("Hasil pencarian: ")
+                                append(tr("Hasil pencarian: ", "Search results: "))
                                 withStyle(SpanStyle(color = Cy.Accent, fontWeight = FontWeight.Bold)) {
                                     append(q)
                                 }
@@ -130,7 +132,7 @@ fun SearchScreen(nav: NavController) {
                             fontSize = 18.sp, fontWeight = FontWeight.Bold
                         )
                         Text(
-                            "${r.anime.size} anime, ${r.donghua.size} donghua",
+                            tr("${r.anime.size} anime, ${r.donghua.size} donghua", "${r.anime.size} anime, ${r.donghua.size} donghua"),
                             color = Cy.Text2, fontSize = 14.sp,
                             modifier = Modifier.padding(top = 4.dp)
                         )
@@ -139,7 +141,7 @@ fun SearchScreen(nav: NavController) {
                 // Section Anime — grid 3 kolom ala AnimeCard
                 item { SectionTitle("Anime") }
                 if (r.anime.isEmpty()) {
-                    item { EmptyPanel("Tidak ada anime yang cocok.") }
+                    item { EmptyPanel(tr("Tidak ada anime yang cocok.", "No matching anime.")) }
                 } else {
                     items(animeRows, key = { it.first().animeId }) { row ->
                         PosterGridRow(
@@ -160,7 +162,7 @@ fun SearchScreen(nav: NavController) {
                 // Section Donghua — grid 3 kolom ala DonghuaCard
                 item { SectionTitle("Donghua") }
                 if (r.donghua.isEmpty()) {
-                    item { EmptyPanel("Tidak ada donghua yang cocok.") }
+                    item { EmptyPanel(tr("Tidak ada donghua yang cocok.", "No matching donghua.")) }
                 } else {
                     items(donghuaRows, key = { it.first().slug }) { row ->
                         PosterGridRow(
@@ -180,10 +182,10 @@ fun SearchScreen(nav: NavController) {
             }
             else -> item {
                 Column(Modifier.padding(horizontal = 16.dp)) {
-                    Text("Pencarian", color = Cy.Text, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Text(tr("Pencarian", "Search"), color = Cy.Text, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "Ketik minimal 2 karakter pada kolom pencarian di atas.",
+                        tr("Ketik minimal 2 karakter pada kolom pencarian di atas.", "Type at least 2 characters in the search box above."),
                         color = Cy.Text2, fontSize = 14.sp
                     )
                 }
@@ -205,7 +207,7 @@ private fun PosterGridRow(count: Int, content: @Composable (Int) -> Unit) {
         repeat(count) { i ->
             Box(Modifier.weight(1f)) { content(i) }
         }
-        repeat(3 - count) { Spacer(Modifier.weight(1f)) }
+        repeat(AppSettings.gridColumns - count) { Spacer(Modifier.weight(1f)) }
     }
 }
 

@@ -55,6 +55,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import id.my.id.cyronime.app.AppSettings
 import id.my.id.cyronime.app.data.Api
 import id.my.id.cyronime.app.data.HttpError
 import id.my.id.cyronime.app.data.SystemStatus
@@ -86,7 +87,7 @@ fun rememberIoScope(): CoroutineScope {
 /* ---------- state umum ---------- */
 
 @Composable
-fun LoadingScreen(text: String = "Memuat…") {
+fun LoadingScreen(text: String = tr("Memuat…", "Loading…")) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
@@ -103,7 +104,7 @@ fun ErrorScreen(message: String, retry: (() -> Unit)? = null) {
             Text(message, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyLarge)
             if (retry != null) {
                 Spacer(Modifier.height(12.dp))
-                TextButton(onClick = retry) { Text("Coba lagi") }
+                TextButton(onClick = retry) { Text(tr("Coba lagi", "Try again")) }
             }
         }
     }
@@ -111,10 +112,10 @@ fun ErrorScreen(message: String, retry: (() -> Unit)? = null) {
 
 /** Pesan error berdasarkan jenis exception — offline vs server vs HTTP. */
 fun errorMessage(err: Exception): String = when (err) {
-    is IOException -> "Tidak ada koneksi internet. Periksa jaringan Anda lalu coba lagi."
-    is HttpError -> if (err.code == 401) "Sesi berakhir. Silakan login ulang."
-    else "Server Cyronime sedang tidak dapat diakses. Coba lagi beberapa saat."
-    else -> "Terjadi kesalahan. Coba lagi."
+    is IOException -> tr("Tidak ada koneksi internet. Periksa jaringan Anda lalu coba lagi.", "No internet connection. Check your network and try again.")
+    is HttpError -> if (err.code == 401) tr("Sesi berakhir. Silakan login ulang.", "Session expired. Please log in again.")
+    else tr("Server Cyronime sedang tidak dapat diakses. Coba lagi beberapa saat.", "Cyronime server is unavailable. Please try again shortly.")
+    else -> tr("Terjadi kesalahan. Coba lagi.", "Something went wrong. Please try again.")
 }
 
 /* ---------- kartu poster (meniru AnimeCard.tsx / DonghuaCard.tsx) ---------- */
@@ -142,7 +143,7 @@ fun PosterCard(
         Box(
             Modifier
                 .fillMaxWidth()
-                .aspectRatio(3f / 4f)
+                .aspectRatio(AppSettings.posterRatio.ratio)
                 .clip(RoundedCornerShape(Cy.RadiusCard))
                 .background(Cy.Surface)
         ) {
@@ -187,13 +188,13 @@ fun PosterCard(
                 ) {
                     Icon(Icons.Filled.Star, null, tint = Cy.Peach, modifier = Modifier.size(14.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text(score, color = Cy.Text, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Text(score, color = Cy.OnMedia, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                 }
             }
             if (!bottomChip.isNullOrBlank()) {
                 Text(
                     bottomChip,
-                    color = Cy.Text,
+                    color = Cy.OnMedia,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,
@@ -322,7 +323,7 @@ fun SynopsisText(text: String, lines: Int = 5, accent: Color = Cy.Accent) {
             overflow = TextOverflow.Ellipsis
         )
         Text(
-            if (expanded) "Lebih sedikit" else "Selengkapnya",
+            if (expanded) tr("Lebih sedikit", "Show less") else tr("Selengkapnya", "Show more"),
             color = accent,
             fontSize = 15.sp,
             fontWeight = FontWeight.SemiBold,
@@ -357,11 +358,11 @@ fun HeroButton(label: String, onClick: () -> Unit) {
         ) {
             Icon(
                 Icons.Filled.PlayArrow, null,
-                tint = Cy.Text, modifier = Modifier.size(17.dp)
+                tint = Cy.OnMedia, modifier = Modifier.size(17.dp)
             )
         }
         Spacer(Modifier.width(9.dp))
-        Text(label, color = Cy.Text, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+        Text(label, color = Cy.OnMedia, fontSize = 19.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -426,7 +427,7 @@ fun SearchBarField(
     onValueChange: (String) -> Unit,
     onSubmit: () -> Unit,
     modifier: Modifier = Modifier,
-    placeholder: String = "Cari anime"
+    placeholder: String = tr("Cari anime", "Search anime")
 ) {
     // Fokus + keyboard: sebelumnya decorationBox TIDAK memanggil inner() saat
     // kosong, jadi field tak punya area input dan keyboard tak pernah muncul.
@@ -449,7 +450,7 @@ fun SearchBarField(
             .padding(start = 16.dp, end = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(Icons.Filled.Search, "Cari", tint = Cy.Text2, modifier = Modifier.size(20.dp))
+        Icon(Icons.Filled.Search, tr("Cari", "Search"), tint = Cy.Text2, modifier = Modifier.size(20.dp))
         androidx.compose.foundation.text.BasicTextField(
             value = value,
             onValueChange = onValueChange,
@@ -489,7 +490,7 @@ fun MaintenanceScreen(status: SystemStatus, retry: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text("Cyronime sedang dalam Maintenance", style = MaterialTheme.typography.headlineSmall)
+        Text(tr("Cyronime sedang dalam Maintenance", "Cyronime is under maintenance"), style = MaterialTheme.typography.headlineSmall)
         Spacer(Modifier.height(12.dp))
         Text(
             status.message,
@@ -500,13 +501,13 @@ fun MaintenanceScreen(status: SystemStatus, retry: () -> Unit) {
         if (status.estimatedEnd != null) {
             Spacer(Modifier.height(8.dp))
             Text(
-                "Perkiraan selesai: ${status.estimatedEnd}",
+                tr("Perkiraan selesai: ${status.estimatedEnd}", "Estimated completion: ${status.estimatedEnd}"),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         Spacer(Modifier.height(24.dp))
-        TextButton(onClick = retry) { Text("Coba lagi") }
+        TextButton(onClick = retry) { Text(tr("Coba lagi", "Try again")) }
     }
 }
 

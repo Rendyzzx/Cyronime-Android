@@ -38,6 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import id.my.id.cyronime.app.AppSettings
 import id.my.id.cyronime.app.data.Api
 import id.my.id.cyronime.app.data.AnimeItem
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -77,7 +78,7 @@ fun GenreScreen(nav: NavController, initialGenreId: String? = null) {
         try {
             genres = Api.animeGenres()
             if (selected == null) selected = genres.firstOrNull()?.id
-            if (genres.isEmpty()) { error = "Daftar genre belum tersedia."; loading = false }
+            if (genres.isEmpty()) { error = tr("Daftar genre belum tersedia.", "Genre list is not available yet."); loading = false }
         } catch (e: Exception) { error = errorMessage(e); loading = false }
     }
     LaunchedEffect(selected) { if (selected != null) { items = emptyList(); loadItems(true) } }
@@ -91,7 +92,8 @@ fun GenreScreen(nav: NavController, initialGenreId: String? = null) {
     LaunchedEffect(Unit) {
         snapshotFlow { shouldLoadMore }.distinctUntilChanged().collect { if (it) loadItems(false) }
     }
-    val rows = remember(items) { items.chunked(3) }
+    val cols = AppSettings.gridColumns
+    val rows = remember(items, cols) { items.chunked(cols) }
 
     LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
         item {
@@ -103,7 +105,7 @@ fun GenreScreen(nav: NavController, initialGenreId: String? = null) {
                     Box(
                         Modifier.size(44.dp).clip(RoundedCornerShape(50)).clickable { nav.popBackStack() },
                         contentAlignment = Alignment.Center
-                    ) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Kembali", tint = Cy.Text, modifier = Modifier.size(22.dp)) }
+                    ) { Icon(Icons.AutoMirrored.Filled.ArrowBack, tr("Kembali", "Back"), tint = Cy.Text, modifier = Modifier.size(22.dp)) }
                     Text("Genre", color = Cy.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 }
                 LazyRow(
@@ -133,7 +135,7 @@ fun GenreScreen(nav: NavController, initialGenreId: String? = null) {
             loading -> item { LoadingScreen() }
             error != null -> item { ErrorScreen(error!!, retry = { if (genres.isEmpty()) nav.popBackStack() else loadItems(true) }) }
             items.isEmpty() -> item {
-                Text("Belum ada anime untuk genre ini.", color = Cy.Text2, fontSize = 14.sp,
+                Text(tr("Belum ada anime untuk genre ini.", "No anime for this genre yet."), color = Cy.Text2, fontSize = 14.sp,
                     modifier = Modifier.padding(16.dp))
             }
             else -> items(rows, key = { it.first().animeId }) { row ->
@@ -150,7 +152,7 @@ fun GenreScreen(nav: NavController, initialGenreId: String? = null) {
                             )
                         }
                     }
-                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                    repeat(cols - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
         }

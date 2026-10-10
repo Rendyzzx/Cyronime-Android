@@ -1,5 +1,6 @@
 package id.my.id.cyronime.app.ui
 
+import id.my.id.cyronime.app.AppSettings
 import id.my.id.cyronime.app.R
 
 import android.annotation.SuppressLint
@@ -249,7 +250,13 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
                     val ordered = ep.qualities.flatMap { g -> g.servers.map { g.quality to it } }
                     // Awal: server terbaik di SEMUA kualitas (vidhide dulu), lalu
                     // user bisa ganti kualitas lewat menu.
-                    val first = pickBest(ordered, null)
+                    // Preferensi kualitas pengguna (Pengaturan > Pemutaran). Auto = null.
+                    // Dicocokkan ke label kualitas yang benar-benar dikirim server;
+                    // bila tak tersedia untuk episode ini, pickBest jatuh ke kualitas lain.
+                    val wanted = AppSettings.quality.match?.let { m ->
+                        ep.qualities.firstOrNull { it.quality.contains(m) }?.quality
+                    }
+                    val first = pickBest(ordered, wanted)
                     when {
                         first != null -> tryAnimeServer(
                             first.first, first.second.serverId, first.second.title
@@ -427,21 +434,21 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
                         .padding(top = 12.dp)
                         .clip(RoundedCornerShape(50))
                         .background(Cy.Overlay)
-                        .border(1.dp, Cy.Surface2, RoundedCornerShape(50))
+                        .border(1.dp, Color(0xFF34365A), RoundedCornerShape(50))
                         .padding(horizontal = 14.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     CircularProgressIndicator(
-                        color = Cy.Text2, strokeWidth = 2.dp, modifier = Modifier.size(14.dp)
+                        color = Cy.OnMedia2, strokeWidth = 2.dp, modifier = Modifier.size(14.dp)
                     )
-                    Text(msg, color = Cy.Text, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(msg, color = Cy.OnMedia, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
 
             if (resolving && streamUrl == null && statusMessage == null) {
                 CircularProgressIndicator(
-                    color = Cy.Text2, strokeWidth = 3.dp,
+                    color = Cy.OnMedia2, strokeWidth = 3.dp,
                     modifier = Modifier.align(Alignment.Center).size(36.dp)
                 )
             }
@@ -455,13 +462,13 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
                             "Semua server ${qualityLabel(activeQuality)} gagal dimuat",
-                            color = Cy.Text, fontSize = 19.sp, fontWeight = FontWeight.SemiBold,
+                            color = Cy.OnMedia, fontSize = 19.sp, fontWeight = FontWeight.SemiBold,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center
                         )
                         Spacer(Modifier.height(8.dp))
                         Text(
                             "Coba lagi, atau pakai kualitas yang masih tersedia.",
-                            color = Cy.Text2, fontSize = 13.sp
+                            color = Cy.OnMedia2, fontSize = 13.sp
                         )
                         Spacer(Modifier.height(16.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -469,12 +476,12 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
                                 Modifier
                                     .height(38.dp)
                                     .clip(RoundedCornerShape(50))
-                                    .background(Cy.Text)
+                                    .background(Cy.OnMedia)
                                     .clickable { load() }
                                     .padding(horizontal = 20.dp),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text("Coba lagi", color = Cy.Navy, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                Text("Coba lagi", color = Color(0xFF212237), fontSize = 14.sp, fontWeight = FontWeight.Bold)
                             }
                             val groups = ep?.qualities ?: emptyList()
                             val other = groups.firstOrNull { g -> g.servers.any { it.serverId !in failedServers.value } }
@@ -483,7 +490,7 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
                                     Modifier
                                         .height(38.dp)
                                         .clip(RoundedCornerShape(50))
-                                        .border(1.dp, Cy.Surface2, RoundedCornerShape(50))
+                                        .border(1.dp, Color(0xFF34365A), RoundedCornerShape(50))
                                         .clickable {
                                             allFailed = false
                                             val s = other.servers.first { it.serverId !in failedServers.value }
@@ -494,7 +501,7 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
                                 ) {
                                     Text(
                                         "Pakai ${qualityLabel(other.quality)}",
-                                        color = Cy.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold
+                                        color = Cy.OnMedia, fontSize = 14.sp, fontWeight = FontWeight.SemiBold
                                     )
                                 }
                             }
@@ -856,6 +863,10 @@ private fun NativePlayer(
                 if (isPlaying) spin = false
             }
             override fun onPlaybackStateChanged(state: Int) {
+                if (state == Player.STATE_ENDED && AppSettings.autoPlayNext && nextId != null) {
+                    // Putar Episode Berikutnya: pola navigasi sama dengan tombol Next.
+                    nav.navigate("watch/$type/$nextId") { popUpTo("watch/$type/$id") { inclusive = true } }
+                }
                 if (state == Player.STATE_READY) { spin = false; onReady() }
                 if (state == Player.STATE_BUFFERING && playing) spin = true
             }
@@ -876,8 +887,11 @@ private fun NativePlayer(
     LaunchedEffect(url) {
         if (resumeDone) return@LaunchedEffect
         resumeDone = true
-        player.play()
-        if (contentId.isNotBlank()) {
+        // Putar Otomatis (Pengaturan > Pemutaran): bila nonaktif, player siap
+        // tetapi menunggu pengguna menekan play.
+        if (AppSettings.autoPlay) player.play()
+        // Ingat Posisi Terakhir: bila nonaktif, selalu mulai dari awal episode.
+        if (AppSettings.rememberPosition && contentId.isNotBlank()) {
             val resume = kotlinx.coroutines.withTimeoutOrNull(2000) {
                 WatchProgressSync.fetchResume(contentId)
             }
@@ -999,11 +1013,11 @@ private fun NativePlayer(
                     .padding(horizontal = 20.dp, vertical = 14.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text(msg, color = Cy.Text, fontSize = 13.sp, textAlign = TextAlign.Center)
+                Text(msg, color = Cy.OnMedia, fontSize = 13.sp, textAlign = TextAlign.Center)
                 Spacer(Modifier.height(10.dp))
                 Text(
                     "Coba Lagi",
-                    color = Cy.Text, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                    color = Cy.OnMedia, fontSize = 13.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier
                         .clip(RoundedCornerShape(Cy.RadiusChip))
                         .background(Cy.Accent)
@@ -1015,7 +1029,7 @@ private fun NativePlayer(
 
         if (spin && playerError == null) {
             CircularProgressIndicator(
-                color = Cy.Text2, strokeWidth = 3.dp,
+                color = Cy.OnMedia2, strokeWidth = 3.dp,
                 modifier = Modifier.align(Alignment.Center).size(36.dp)
             )
         }
@@ -1029,7 +1043,7 @@ private fun NativePlayer(
                     .background(Cy.OverlaySoft)
                     .padding(horizontal = 16.dp, vertical = 10.dp)
             ) {
-                Text(flash, color = Cy.Text, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Text(flash, color = Cy.OnMedia, fontSize = 14.sp, fontWeight = FontWeight.Bold)
             }
         }
 
@@ -1070,7 +1084,7 @@ private fun NativePlayer(
                         Modifier
                             .size(56.dp)
                             .clip(RoundedCornerShape(50))
-                            .background(Cy.Text)
+                            .background(Cy.OnMedia)
                             .clickable { toggle() },
                         contentAlignment = Alignment.Center
                     ) {
@@ -1092,7 +1106,7 @@ private fun NativePlayer(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("${fmtTime(current)} / ${fmtTime(duration)}", color = Cy.Text, fontSize = 12.sp)
+                    Text("${fmtTime(current)} / ${fmtTime(duration)}", color = Cy.OnMedia, fontSize = 12.sp)
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -1116,7 +1130,7 @@ private fun NativePlayer(
                         ) {
                             Icon(
                                 if (isFullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
-                                "Layar penuh", tint = Cy.Text, modifier = Modifier.size(20.dp)
+                                "Layar penuh", tint = Cy.OnMedia, modifier = Modifier.size(20.dp)
                             )
                         }
                     }
@@ -1150,7 +1164,7 @@ private fun SmallPlayerButton(
     ) {
         Icon(
             icon, null,
-            tint = if (enabled) Cy.Text else Color(0x4D_FEFDFF),
+            tint = if (enabled) Cy.OnMedia else Color(0x4D_FEFDFF),
             modifier = Modifier.size(28.dp)
         )
     }
@@ -1167,7 +1181,7 @@ private fun PillButton(label: String, onClick: () -> Unit) {
             .padding(horizontal = 10.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(label, color = Cy.Text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+        Text(label, color = Cy.OnMedia, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
@@ -1228,7 +1242,7 @@ private fun SeekBar(
                 .align(Alignment.CenterStart)
                 .width(w * shown.toFloat())
                 .height(3.dp)
-                .background(Cy.Text2)
+                .background(Cy.OnMedia2)
         )
         val thumbX = (w * shown.toFloat() - 7.dp).coerceAtLeast(0.dp)
         Box(
@@ -1236,7 +1250,7 @@ private fun SeekBar(
                 .align(Alignment.CenterStart)
                 .offset(x = thumbX)
                 .size(14.dp)
-                .background(Cy.Text, RoundedCornerShape(50))
+                .background(Cy.OnMedia, RoundedCornerShape(50))
         )
     }
 }

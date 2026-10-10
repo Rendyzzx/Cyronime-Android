@@ -176,7 +176,7 @@ fun DetailScreen(nav: NavController, type: String, slug: String) {
                         .clickable { nav.popBackStack() },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Kembali", tint = Cy.Text, modifier = Modifier.size(32.dp))
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, tr("Kembali", "Back"), tint = Cy.OnMedia, modifier = Modifier.size(32.dp))
                 }
             }
         }
@@ -220,13 +220,13 @@ fun DetailScreen(nav: NavController, type: String, slug: String) {
                     }
                 }
                 Spacer(Modifier.height(24.dp))
-                Text("Synopsis", color = Cy.Text, fontSize = 21.sp, fontWeight = FontWeight.Light)
+                Text(tr("Sinopsis", "Synopsis"), color = Cy.Text, fontSize = 21.sp, fontWeight = FontWeight.Light)
                 Spacer(Modifier.height(8.dp))
                 if (!synopsis.isNullOrBlank()) {
                     SynopsisText(synopsis)
                 } else {
                     Text(
-                        "Sinopsis untuk judul ini belum tersedia dari sumber.",
+                        tr("Sinopsis untuk judul ini belum tersedia dari sumber.", "No synopsis is available for this title yet."),
                         color = Cy.Text2, fontSize = 14.sp, lineHeight = 20.sp
                     )
                 }
@@ -250,7 +250,7 @@ fun DetailScreen(nav: NavController, type: String, slug: String) {
                             Icon(Icons.Filled.PlayArrow, null, tint = Cy.Text, modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(8.dp))
                             Text(
-                                "Mulai nonton eps 1",
+                                tr("Mulai nonton eps 1", "Start watching ep 1"),
                                 color = Cy.Text, fontSize = 16.sp, fontWeight = FontWeight.Bold,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis
                             )
@@ -274,7 +274,7 @@ fun DetailScreen(nav: NavController, type: String, slug: String) {
                         )
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            if (favorite) "Favorit" else "Favorite",
+                            if (favorite) tr("Favorit", "Favorited") else tr("Tambah favorit", "Add to favorites"),
                             color = Cy.Text, fontSize = 16.sp, fontWeight = FontWeight.Bold
                         )
                     }
@@ -285,7 +285,7 @@ fun DetailScreen(nav: NavController, type: String, slug: String) {
         // ===== Episode list (terbaru dulu) =====
         val episodes = animeDetail?.episodeList?.reversed() ?: donghuaDetail?.episodes?.reversed()
         if (!episodes.isNullOrEmpty()) {
-            item { SectionTitle("Episodes (${episodes.size})") }
+            item { SectionTitle(tr("Episode (${episodes.size})", "Episodes (${episodes.size})")) }
             items(
                 episodes,
                 key = {
@@ -328,7 +328,7 @@ fun DetailScreen(nav: NavController, type: String, slug: String) {
         } else {
             item {
                 Text(
-                    "Daftar episode belum tersedia.",
+                    tr("Daftar episode belum tersedia.", "Episode list is not available yet."),
                     color = Cy.Text2, fontSize = 14.sp,
                     modifier = Modifier.padding(16.dp)
                 )

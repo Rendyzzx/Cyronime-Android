@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import id.my.id.cyronime.app.Prefs
+import id.my.id.cyronime.app.AppSettings
 import id.my.id.cyronime.app.data.AnimeItem
 import id.my.id.cyronime.app.data.Api
 import id.my.id.cyronime.app.data.DonghuaItem
@@ -148,7 +149,7 @@ fun HomeScreen(nav: NavController) {
                             isAnime = next
                             Prefs.setPortal(ctx, if (next) "anime" else "donghua")
                         })
-                        SquareIconButton(Icons.Filled.Person, "Profil") { nav.navigate("profile") }
+                        SquareIconButton(Icons.Filled.Person, tr("Profil", "Profile")) { nav.navigate("profile") }
                     }
                 }
             }
@@ -168,9 +169,9 @@ fun HomeScreen(nav: NavController) {
                             .padding(start = 16.dp, end = 16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Filled.Search, "Cari", tint = Cy.Text2, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Filled.Search, tr("Cari", "Search"), tint = Cy.Text2, modifier = Modifier.size(20.dp))
                         Spacer(Modifier.width(14.dp))
-                        Text("Cari anime", color = Cy.Text2, fontSize = 15.sp)
+                        Text(tr("Cari anime", "Search anime"), color = Cy.Text2, fontSize = 15.sp)
                     }
                     if (isAnime) {
                         Box(
@@ -205,11 +206,11 @@ fun HomeScreen(nav: NavController) {
                     HeroFeatured(
                         poster = featuredAnime.poster,
                         title = featuredAnime.title,
-                        chip = "Sedang populer",
+                        chip = tr("Sedang populer", "Trending now"),
                         subtitle = buildString {
-                            if (!featuredAnime.score.isNullOrBlank()) append("Skor ${featuredAnime.score}")
-                            else append("Tonton sekarang")
-                            featuredAnime.episodes?.let { append(", $it eps") }
+                            if (!featuredAnime.score.isNullOrBlank()) append(tr("Skor ", "Score ") + featuredAnime.score)
+                            else append(tr("Tonton sekarang", "Watch now"))
+                            featuredAnime.episodes?.let { append(tr(", $it eps", ", $it eps")) }
                         },
                         onWatch = { nav.navigate("detail/anime/${featuredAnime.animeId}") }
                     )
@@ -218,7 +219,7 @@ fun HomeScreen(nav: NavController) {
                     HeroFeatured(
                         poster = featuredDonghua.poster,
                         title = featuredDonghua.title,
-                        chip = "Donghua terbaru",
+                        chip = tr("Donghua terbaru", "Latest donghua"),
                         subtitle = listOfNotNull(
                             featuredDonghua.status, featuredDonghua.currentEpisode
                         ).joinToString(", "),
@@ -231,7 +232,7 @@ fun HomeScreen(nav: NavController) {
                 // ===== Anime Terbaru =====
                 if (animeOngoing.isNotEmpty()) {
                     item {
-                        RailHeader("Anime Terbaru", "Lihat semua") { nav.navigate("portal/anime") }
+                        RailHeader(tr("Anime Terbaru", "Latest Anime"), tr("Lihat semua", "See all")) { nav.navigate("portal/anime") }
                         Text(
                             "Episode terbaru yang sedang tayang.",
                             color = Cy.Text2, fontSize = 12.sp,
@@ -260,12 +261,12 @@ fun HomeScreen(nav: NavController) {
                 if (popular.isNotEmpty()) {
                     item {
                         Text(
-                            "Terpopuler",
+                            tr("Terpopuler", "Most Popular"),
                             color = Cy.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(start = 14.dp, end = 14.dp, top = 24.dp)
                         )
                         Text(
-                            "Diurutkan dari skor tertinggi.",
+                            tr("Diurutkan dari skor tertinggi.", "Sorted by highest score."),
                             color = Cy.Text2, fontSize = 12.sp,
                             modifier = Modifier.padding(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 12.dp)
                         )
@@ -276,7 +277,7 @@ fun HomeScreen(nav: NavController) {
                             poster = a.poster,
                             title = a.title,
                             subtitle = buildString {
-                                if (!a.score.isNullOrBlank()) append("Skor ${a.score}") else append("Populer")
+                                if (!a.score.isNullOrBlank()) append(tr("Skor ", "Score ") + a.score) else append(tr("Populer", "Popular"))
                                 a.episodes?.let { append(", $it eps") }
                             },
                             onClick = { nav.navigate("detail/anime/${a.animeId}") }
@@ -287,7 +288,7 @@ fun HomeScreen(nav: NavController) {
                 // ===== Donghua Terbaru =====
                 if (donghuaLatest.isNotEmpty()) {
                     item {
-                        RailHeader("Donghua Terbaru", "Lihat semua") { nav.navigate("portal/donghua") }
+                        RailHeader(tr("Donghua Terbaru", "Latest Donghua"), tr("Lihat semua", "See all")) { nav.navigate("portal/donghua") }
                         Text(
                             "Rilisan donghua terbaru.",
                             color = Cy.Text2, fontSize = 12.sp,
@@ -313,7 +314,7 @@ fun HomeScreen(nav: NavController) {
                 }
                 // ===== Donghua Ongoing =====
                 if (donghuaOngoing.isNotEmpty()) {
-                    item { RailHeader("Donghua Ongoing", null) {} }
+                    item { RailHeader(tr("Donghua Sedang Tayang", "Ongoing Donghua"), null) {} }
                     item {
                         LazyRow(
                             contentPadding = PaddingValues(horizontal = 12.dp),
@@ -376,7 +377,7 @@ private fun HeroBase(
         )
         Text(
             chip,
-            color = Cy.Text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+            color = Cy.OnMedia, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .padding(16.dp)
@@ -392,14 +393,14 @@ private fun HeroBase(
         ) {
             Text(
                 title,
-                color = Cy.Text, fontSize = 28.sp, fontWeight = FontWeight.Bold,
+                color = Cy.OnMedia, fontSize = 28.sp, fontWeight = FontWeight.Bold,
                 lineHeight = 29.4.sp, maxLines = 2, overflow = TextOverflow.Ellipsis
             )
             Spacer(Modifier.height(6.dp))
             Text(subtitle, color = Cy.Peach, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Spacer(Modifier.height(14.dp))
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                HeroButton("Tonton sekarang", onWatch)
+                HeroButton(tr("Tonton sekarang", "Watch now"), onWatch)
                 if (onInfo != null) {
                     Box(
                         Modifier
@@ -410,7 +411,7 @@ private fun HeroBase(
                             .clickable(onClick = onInfo),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Filled.Info, "Detail", tint = Cy.Text2, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Filled.Info, "Detail", tint = Cy.OnMedia2, modifier = Modifier.size(20.dp))
                     }
                 }
             }
@@ -429,9 +430,9 @@ private fun HeroResume(p: WatchProgress, nav: NavController) {
     }
     HeroBase(
         poster = poster,
-        chip = "Lanjut nonton",
+        chip = tr("Lanjut nonton", "Continue watching"),
         title = p.title,
-        subtitle = if (p.episode != null) "Episode ${p.episode}" else "Lanjutkan dari terakhir kali",
+        subtitle = if (p.episode != null) "Episode ${p.episode}" else tr("Lanjutkan dari terakhir kali", "Pick up where you left off"),
         onWatch = { nav.navigate("watch/${p.type}/${p.episodeId}") },
         onInfo = { nav.navigate("detail/${p.type}/${p.contentId}") }
     )
@@ -583,8 +584,9 @@ fun PortalListScreen(nav: NavController, type: String) {
     }
 
     // Baris grid dihitung ulang hanya saat data berubah (bukan tiap recomposition).
-    val animeRows = remember(animeItems) { animeItems.chunked(3) }
-    val donghuaRows = remember(donghuaItems) { donghuaItems.chunked(3) }
+    val cols = AppSettings.gridColumns
+    val animeRows = remember(animeItems, cols) { animeItems.chunked(cols) }
+    val donghuaRows = remember(donghuaItems, cols) { donghuaItems.chunked(cols) }
 
     when {
         loading -> LoadingScreen()
@@ -604,9 +606,9 @@ fun PortalListScreen(nav: NavController, type: String) {
                             .padding(horizontal = 16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Filled.Search, "Cari", tint = Cy.Text2, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Filled.Search, tr("Cari", "Search"), tint = Cy.Text2, modifier = Modifier.size(20.dp))
                         Spacer(Modifier.width(14.dp))
-                        Text("Cari anime", color = Cy.Text2, fontSize = 15.sp)
+                        Text(tr("Cari anime", "Search anime"), color = Cy.Text2, fontSize = 15.sp)
                     }
                     // Judul + PortalSwitch
                     Row(
@@ -656,8 +658,8 @@ fun PortalListScreen(nav: NavController, type: String) {
                     Spacer(Modifier.height(20.dp))
                     TabsRow(
                         tabs = listOf(
-                            (if (isAnime) "Sedang Tayang" else "Terbaru") to (tab == 0),
-                            (if (isAnime) "Tamat" else "Ongoing") to (tab == 1)
+                            (if (isAnime) tr("Sedang Tayang", "Airing") else tr("Terbaru", "Latest")) to (tab == 0),
+                            (if (isAnime) tr("Tamat", "Completed") else "Ongoing") to (tab == 1)
                         )
                     ) { tab = it }
                     Spacer(Modifier.height(20.dp))
@@ -682,7 +684,7 @@ fun PortalListScreen(nav: NavController, type: String) {
                                 )
                             }
                         }
-                        repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                        repeat(cols - row.size) { Spacer(Modifier.weight(1f)) }
                     }
                 }
             } else {
@@ -702,7 +704,7 @@ fun PortalListScreen(nav: NavController, type: String) {
                                 )
                             }
                         }
-                        repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                        repeat(cols - row.size) { Spacer(Modifier.weight(1f)) }
                     }
                 }
             }

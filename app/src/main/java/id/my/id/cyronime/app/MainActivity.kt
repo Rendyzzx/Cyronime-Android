@@ -77,6 +77,7 @@ import id.my.id.cyronime.app.ui.MaintenanceScreen
 import id.my.id.cyronime.app.ui.SearchScreen
 import id.my.id.cyronime.app.ui.SettingsScreen
 import id.my.id.cyronime.app.ui.WatchScreen
+import id.my.id.cyronime.app.ui.tr
 import id.my.id.cyronime.app.ui.versionLessThan
 import kotlinx.coroutines.launch
 
@@ -86,6 +87,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AppSettings.load(this)   // tema/bahasa/dll harus siap SEBELUM frame pertama
         handleDeepLink(intent)
         askNotificationPermission()
 
@@ -119,7 +121,10 @@ class MainActivity : ComponentActivity() {
             val granted = ContextCompat.checkSelfPermission(
                 this, Manifest.permission.POST_NOTIFICATIONS
             ) == PackageManager.PERMISSION_GRANTED
-            if (!granted) {
+            // Minta sekali saja. Bila ditolak, pengguna bisa mengaktifkannya sendiri
+            // dari pengaturan sistem; kita tidak mengganggu setiap kali app dibuka.
+            if (!granted && !Prefs.notifPermissionAsked(this)) {
+                Prefs.setNotifPermissionAsked(this, true)
                 ActivityCompat.requestPermissions(
                     this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 100
                 )
@@ -241,11 +246,13 @@ fun CyronimeApp(initialDeepLink: String?) {
     forceVersion?.let { v ->
         AlertDialog(
             onDismissRequest = { /* tidak bisa ditutup */ },
-            title = { Text("Versi aplikasi Anda sudah tidak didukung.") },
+            title = { Text(tr("Versi aplikasi Anda sudah tidak didukung.", "Your app version is no longer supported.")) },
             text = {
                 Text(
-                    "Minimum versi yang didukung adalah ${v.minimumVersion}. " +
-                        "Perbarui aplikasi untuk melanjutkan."
+                    tr(
+                        "Minimum versi yang didukung adalah ${v.minimumVersion}. Perbarui aplikasi untuk melanjutkan.",
+                        "The minimum supported version is ${v.minimumVersion}. Update the app to continue."
+                    )
                 )
             },
             confirmButton = {
@@ -254,7 +261,7 @@ fun CyronimeApp(initialDeepLink: String?) {
                     if (url != null) {
                         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                     }
-                }) { Text("Update Sekarang") }
+                }) { Text(tr("Update Sekarang", "Update now")) }
             }
         )
         return
@@ -264,8 +271,8 @@ fun CyronimeApp(initialDeepLink: String?) {
     softVersion?.let { v ->
         AlertDialog(
             onDismissRequest = { softVersion = null },
-            title = { Text("Update tersedia.") },
-            text = { Text("Versi terbaru Cyronime: ${v.latestVersion}.") },
+            title = { Text(tr("Update tersedia.", "Update available.")) },
+            text = { Text(tr("Versi terbaru Cyronime: ${v.latestVersion}.", "Latest Cyronime version: ${v.latestVersion}.")) },
             confirmButton = {
                 TextButton(onClick = {
                     softVersion = null
@@ -273,10 +280,10 @@ fun CyronimeApp(initialDeepLink: String?) {
                     if (url != null) {
                         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                     }
-                }) { Text("Update") }
+                }) { Text(tr("Perbarui", "Update")) }
             },
             dismissButton = {
-                TextButton(onClick = { softVersion = null }) { Text("Nanti") }
+                TextButton(onClick = { softVersion = null }) { Text(tr("Nanti", "Later")) }
             }
         )
     }
@@ -440,7 +447,7 @@ private fun CyBottomBar(
                 onTab
             )
             // Cari
-            BottomItem("search", "Cari", Icons.Filled.Search, current == "search", Modifier.weight(1f), onTab)
+            BottomItem("search", tr("Cari", "Search"), Icons.Filled.Search, current == "search", Modifier.weight(1f), onTab)
             // Profil (avatar bila ada, ala web)
             Column(
                 Modifier
@@ -457,7 +464,7 @@ private fun CyBottomBar(
                 if (!me?.image.isNullOrBlank()) {
                     AsyncImage(
                         model = me!!.image,
-                        contentDescription = "Profil",
+                        contentDescription = tr("Profil", "Profile"),
                         contentScale = ContentScale.Crop,
                         modifier = Modifier
                             .size(30.dp)
@@ -473,7 +480,7 @@ private fun CyBottomBar(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            Icons.Filled.Person, "Profil",
+                            Icons.Filled.Person, tr("Profil", "Profile"),
                             tint = if (active) Cy.Text else Cy.Text2,
                             modifier = Modifier.size(18.dp)
                         )
@@ -481,7 +488,7 @@ private fun CyBottomBar(
                 }
                 if (active) {
                     Text(
-                        "Profil",
+                        tr("Profil", "Profile"),
                         color = Cy.Text,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold

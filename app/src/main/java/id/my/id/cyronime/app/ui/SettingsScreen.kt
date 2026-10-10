@@ -24,6 +24,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.PlaylistPlay
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.ui.text.style.TextAlign
+import id.my.id.cyronime.app.AppSettings
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -63,6 +72,7 @@ import id.my.id.cyronime.app.data.Me
 import id.my.id.cyronime.app.data.NotifyPrefs
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.Request
 
 /**
@@ -89,16 +99,7 @@ fun ProfileScreen(nav: NavController, onLoggedOut: () -> Unit) {
 
     fun logout() {
         io.launch {
-            try {
-                Api.unregisterDevice(context)
-            } catch (_: Exception) {
-            }
-            try {
-                Api.logout()
-            } catch (_: Exception) {
-            }
-            Api.clearSession()
-            Prefs.setSessionDone(context, false)
+            SettingsActions.logout(context)
             kotlinx.coroutines.withContext(Dispatchers.Main) { onLoggedOut() }
         }
     }
@@ -111,7 +112,7 @@ fun ProfileScreen(nav: NavController, onLoggedOut: () -> Unit) {
             .padding(horizontal = 14.dp)
     ) {
         Spacer(Modifier.height(16.dp))
-        Text("Profile", color = Cy.Text, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Text(tr("Profil", "Profile"), color = Cy.Text, fontSize = 18.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(24.dp))
 
         if (loading) {
@@ -149,7 +150,7 @@ fun ProfileScreen(nav: NavController, onLoggedOut: () -> Unit) {
                 }
                 Column(Modifier.weight(1f)) {
                     Text(
-                        me?.name ?: "Akun Cyronime",
+                        me?.name ?: tr("Akun Cyronime", "Cyronime account"),
                         color = Cy.Text, fontSize = 17.sp, fontWeight = FontWeight.Bold,
                         maxLines = 1, overflow = TextOverflow.Ellipsis
                     )
@@ -171,15 +172,15 @@ fun ProfileScreen(nav: NavController, onLoggedOut: () -> Unit) {
                 .clip(RoundedCornerShape(Cy.RadiusCard))
                 .background(Cy.Surface)
         ) {
-            ProfileLink(Icons.Filled.Schedule, "Watch History", "Riwayat episode yang sudah ditonton") {
+            ProfileLink(Icons.Filled.Schedule, tr("Riwayat Tontonan", "Watch History"), tr("Episode yang sudah kamu tonton", "Episodes you have watched")) {
                 nav.navigate("library/history")
             }
             Box(Modifier.fillMaxWidth().height(1.dp).background(Cy.Line))
-            ProfileLink(Icons.Filled.PlaylistPlay, "Favorites", "Anime & donghua yang kamu simpan") {
+            ProfileLink(Icons.Filled.PlaylistPlay, tr("Favorit", "Favorites"), tr("Anime & donghua yang kamu simpan", "Anime & donghua you saved")) {
                 nav.navigate("library/favorites")
             }
             Box(Modifier.fillMaxWidth().height(1.dp).background(Cy.Line))
-            ProfileLink(Icons.Filled.Settings, "Settings", "Tema dan preferensi lainnya") {
+            ProfileLink(Icons.Filled.Settings, tr("Pengaturan", "Settings"), tr("Tema dan preferensi lainnya", "Theme and other preferences")) {
                 nav.navigate("settings")
             }
         }
@@ -189,7 +190,7 @@ fun ProfileScreen(nav: NavController, onLoggedOut: () -> Unit) {
             onClick = { logout() },
             modifier = Modifier.fillMaxWidth().height(48.dp)
         ) {
-            Text("Logout", color = Cy.Text, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            Text(tr("Logout", "Log out"), color = Cy.Text, fontSize = 15.sp, fontWeight = FontWeight.Bold)
         }
         Spacer(Modifier.height(32.dp))
     }
@@ -217,61 +218,41 @@ private fun ProfileLink(icon: ImageVector, label: String, desc: String, onClick:
     }
 }
 
-/**
- * Settings ala SettingsView web: kartu akun, preferensi notifikasi (backend,
- * sinkron dengan Web), perangkat, tentang, aksi berbahaya (hapus history /
- * reset progress) dan logout.
- */
+
+/* ============================================================
+ * Settings — halaman pengaturan pengguna.
+ *
+ * Grup: Personalisasi, Pemutaran, Bahasa, Data & Privasi, Akun,
+ * Tentang. Pilihan disimpan via AppSettings (SharedPreferences)
+ * dan langsung memperbarui UI (state Compose).
+ *
+ * Sistem teknis (registrasi device, sinkron notifikasi, preferensi
+ * notifikasi di server) TETAP berjalan — pemulihannya otomatis dan
+ * senyap lewat SettingsActions, tidak lagi ditampilkan ke pengguna.
+ * ============================================================ */
 @Composable
 fun SettingsScreen(nav: NavController, onLoggedOut: () -> Unit) {
     val context = LocalContext.current
     var me by remember { mutableStateOf<Me?>(null) }
-    var prefs by remember { mutableStateOf(NotifyPrefs.DEFAULT) }
-    var loading by remember { mutableStateOf(true) }
     var confirmLogout by remember { mutableStateOf(false) }
     var confirmHistory by remember { mutableStateOf(false) }
     var confirmProgress by remember { mutableStateOf(false) }
-
+    var busy by remember { mutableStateOf(false) }
+    var toast by remember { mutableStateOf<String?>(null) }
     val io = rememberIoScope()
 
-    fun reload() {
-        loading = true
-        io.launch {
-            try {
-                me = Api.me()
-                prefs = Api.getNotifyPrefs()
-            } catch (_: Exception) {
-                me = null
-            } finally {
-                loading = false
-            }
-        }
+    // Akun + pemulihan senyap registrasi device (jalur utama tetap
+    // onNewToken + MainActivity saat login; ini hanya pemantik ulang).
+    LaunchedEffect(Unit) {
+        try { me = Api.me() } catch (_: Exception) { me = null }
+        SettingsActions.ensureDeviceRegistered(context)
     }
 
-    LaunchedEffect(Unit) { reload() }
-
-    fun togglePref(key: String, next: Boolean) {
+    fun runBusy(block: suspend () -> Unit, okMsg: String) {
         io.launch {
-            try {
-                Api.setNotifyPref(key, next)
-            } catch (_: Exception) {
-            }
-        }
-    }
-
-    fun logout() {
-        io.launch {
-            try {
-                Api.unregisterDevice(context)
-            } catch (_: Exception) {
-            }
-            try {
-                Api.logout()
-            } catch (_: Exception) {
-            }
-            Api.clearSession()
-            Prefs.setSessionDone(context, false)
-            kotlinx.coroutines.withContext(Dispatchers.Main) { onLoggedOut() }
+            busy = true
+            try { block(); toast = okMsg } catch (_: Exception) { toast = tr("Gagal. Coba lagi.", "Failed. Try again.") }
+            busy = false
         }
     }
 
@@ -280,219 +261,353 @@ fun SettingsScreen(nav: NavController, onLoggedOut: () -> Unit) {
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .statusBarsPadding()
-            .padding(horizontal = 14.dp)
+            .padding(horizontal = 16.dp)
     ) {
         Spacer(Modifier.height(16.dp))
-        Text("Settings", color = Cy.Text, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(24.dp))
+        Text(tr("Pengaturan", "Settings"), color = Cy.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(20.dp))
 
-        /* --- Kartu akun --- */
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(Cy.RadiusCard))
-                .background(Cy.Surface)
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            if (!me?.image.isNullOrBlank()) {
-                AsyncImage(
-                    model = me!!.image,
-                    contentDescription = "Foto profil",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.size(48.dp).clip(CircleShape)
-                )
-            }
-            Column {
-                Text(
-                    me?.name ?: "Akun Cyronime",
-                    color = Cy.Text, fontSize = 16.sp, fontWeight = FontWeight.Bold
-                )
-                Text(me?.email ?: "", color = Cy.Text2, fontSize = 13.sp)
-            }
+        /* ---------- Personalisasi ---------- */
+        SettingsCard {
+            CardHeader(Icons.Filled.Palette, tr("Personalisasi", "Personalization"))
+            ChoiceRow(tr("Tema", "Theme"), AppSettings.ThemeMode.entries,
+                labelOf = { m -> when (m) {
+                    AppSettings.ThemeMode.System -> tr("Sistem", "System")
+                    AppSettings.ThemeMode.Dark -> tr("Gelap", "Dark")
+                    AppSettings.ThemeMode.Light -> tr("Terang", "Light") } },
+                selected = { m -> AppSettings.themeMode == m },
+                onPick = { AppSettings.setThemeMode(context, it) })
+            CardDivider()
+            ChoiceRow(tr("Warna aksen", "Accent color"), AppSettings.Accent.entries,
+                labelOf = { a -> when (a) {
+                    AppSettings.Accent.Purple -> tr("Ungu", "Purple")
+                    AppSettings.Accent.Blue -> tr("Biru", "Blue")
+                    AppSettings.Accent.Pink -> tr("Merah muda", "Pink") } },
+                selected = { a -> AppSettings.accent == a },
+                onPick = { AppSettings.setAccent(context, it) })
+            CardDivider()
+            ChoiceRow(tr("Ukuran teks", "Text size"), AppSettings.TextScale.entries,
+                labelOf = { t -> when (t) {
+                    AppSettings.TextScale.Small -> tr("Kecil", "Small")
+                    AppSettings.TextScale.Normal -> tr("Normal", "Normal")
+                    AppSettings.TextScale.Large -> tr("Besar", "Large") } },
+                selected = { t -> AppSettings.textScale == t },
+                onPick = { AppSettings.setTextScale(context, it) })
+            CardDivider()
+            ChoiceRow(tr("Kolom daftar", "Grid columns"), listOf(2, 3),
+                labelOf = { c -> tr("${c} kolom", "$c columns") },
+                selected = { c -> AppSettings.gridColumns == c },
+                onPick = { AppSettings.setGridColumns(context, it) })
+            CardDivider()
+            ChoiceRow(tr("Rasio poster", "Poster ratio"), AppSettings.PosterRatio.entries,
+                labelOf = { r -> if (r == AppSettings.PosterRatio.Portrait) "3:4" else "2:3" },
+                selected = { r -> AppSettings.posterRatio == r },
+                onPick = { AppSettings.setPosterRatio(context, it) })
         }
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(20.dp))
 
-        /* --- Notifications --- */
-        SettingsSectionLabel("Notifications", "Tersimpan di akun Anda — berlaku juga di Web.")
-        Spacer(Modifier.height(8.dp))
-        PrefToggle("Episode baru", prefs.newEpisode, loading) { prefs = prefs.copy(newEpisode = it); togglePref("newEpisode", it) }
-        PrefToggle("Anime baru (judul)", prefs.newAnime, loading) { prefs = prefs.copy(newAnime = it); togglePref("newAnime", it) }
-        PrefToggle("Anime favorit", prefs.favorite, loading) { prefs = prefs.copy(favorite = it); togglePref("favorite", it) }
-        PrefToggle("Pengumuman Cyronime", prefs.announcement, loading) { prefs = prefs.copy(announcement = it); togglePref("announcement", it) }
-        PrefToggle("Maintenance", prefs.maintenance, loading) { prefs = prefs.copy(maintenance = it); togglePref("maintenance", it) }
-        PrefToggle("Update aplikasi", prefs.appUpdate, loading) { prefs = prefs.copy(appUpdate = it); togglePref("appUpdate", it) }
+        /* ---------- Pemutaran ---------- */
+        SettingsCard {
+            CardHeader(Icons.Filled.PlayCircle, tr("Pemutaran", "Playback"))
+            ChoiceRow(tr("Kualitas video", "Video quality"), AppSettings.Quality.entries,
+                labelOf = { q -> when (q) {
+                    AppSettings.Quality.Auto -> tr("Otomatis", "Auto")
+                    AppSettings.Quality.Q360 -> "360p"
+                    AppSettings.Quality.Q480 -> "480p"
+                    AppSettings.Quality.Q720 -> "720p" } },
+                selected = { q -> AppSettings.quality == q },
+                onPick = { AppSettings.setQuality(context, it) })
+            CardDivider()
+            SwitchRow(tr("Episode berikutnya", "Play next episode"),
+                tr("Lanjut otomatis setelah selesai", "Continue automatically when finished"),
+                AppSettings.autoPlayNext) { AppSettings.setAutoPlayNext(context, it) }
+            CardDivider()
+            SwitchRow(tr("Putar otomatis", "Autoplay"),
+                tr("Mulai video begitu dibuka", "Start video as soon as it opens"),
+                AppSettings.autoPlay) { AppSettings.setAutoPlay(context, it) }
+            CardDivider()
+            SwitchRow(tr("Ingat posisi terakhir", "Remember position"),
+                tr("Lanjut dari posisi terakhir ditonton", "Resume where you left off"),
+                AppSettings.rememberPosition) { AppSettings.setRememberPosition(context, it) }
+        }
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(20.dp))
 
-        /* --- Perangkat --- */
-        SettingsSectionLabel("Perangkat", "ID: ${Prefs.deviceId(context).take(18)}…")
-        var syncStatus by remember { mutableStateOf<String?>(null) }
-        TextButton(onClick = {
-            syncStatus = "Mengambil token FCM…"
-            val notifOk = androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()
-            FirebaseMessaging.getInstance().token
-                .addOnFailureListener { e ->
-                    syncStatus = "GAGAL ambil token FCM: ${e.javaClass.simpleName}: ${e.message?.take(120)}"
-                }
-                .addOnSuccessListener { token ->
-                    Prefs.setFcmToken(context, token)
-                    io.launch {
-                        syncStatus = try {
-                            Api.registerDevice(context, token)
-                            "BERHASIL terdaftar di server" +
-                                if (notifOk) "." else ", tapi izin notifikasi MATI di pengaturan HP."
-                        } catch (e: HttpError) {
-                            "GAGAL daftar ke server: HTTP ${e.code}" +
-                                if (e.code == 401) " (sesi login tidak dikenali)" else ""
-                        } catch (e: Exception) {
-                            "GAGAL daftar ke server: ${e.javaClass.simpleName}: ${e.message?.take(120)}"
-                        }
+        /* ---------- Bahasa ---------- */
+        SettingsCard {
+            CardHeader(Icons.Filled.Language, tr("Bahasa", "Language"))
+            ChoiceRow("", AppSettings.Language.entries,
+                labelOf = { l -> if (l == AppSettings.Language.Id) "Bahasa Indonesia" else "English" },
+                selected = { l -> AppSettings.language == l },
+                onPick = { AppSettings.setLanguage(context, it) })
+        }
+
+        Spacer(Modifier.height(20.dp))
+
+        /* ---------- Data & Privasi ---------- */
+        SettingsCard {
+            CardHeader(Icons.Filled.DeleteSweep, tr("Data & Privasi", "Data & Privacy"))
+            ActionRow(tr("Hapus riwayat tontonan", "Clear watch history"),
+                tr("Menghapus riwayat episode di semua perangkat", "Removes episode history on all devices"),
+                enabled = !busy) { confirmHistory = true }
+            CardDivider()
+            ActionRow(tr("Reset progress menonton", "Reset watch progress"),
+                tr("Continue watching akan direset di semua perangkat", "Continue watching will reset on all devices"),
+                enabled = !busy) { confirmProgress = true }
+        }
+
+        Spacer(Modifier.height(20.dp))
+
+        /* ---------- Akun ---------- */
+        SettingsCard {
+            CardHeader(Icons.Filled.Person, tr("Akun", "Account"))
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                if (!me?.image.isNullOrBlank()) {
+                    AsyncImage(
+                        model = me!!.image,
+                        contentDescription = tr("Foto profil", "Profile photo"),
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.size(44.dp).clip(CircleShape)
+                    )
+                } else {
+                    Box(Modifier.size(44.dp).clip(CircleShape).background(Cy.Accent), contentAlignment = Alignment.Center) {
+                        Text(me?.name?.take(1)?.uppercase() ?: "C",
+                            color = Cy.OnMedia, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                     }
                 }
-        }) { Text("Sinkronkan ulang notifikasi") }
-        syncStatus?.let {
-            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Column(Modifier.weight(1f)) {
+                    Text(me?.name ?: tr("Akun Cyronime", "Cyronime account"),
+                        color = Cy.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    me?.email?.let {
+                        Text(it, color = Cy.Text2, fontSize = 13.sp,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+            CardDivider()
+            ActionRow(tr("Keluar dari akun", "Log out"),
+                tr("Data Anda tetap tersimpan di akun", "Your data stays saved in your account"),
+                enabled = !busy, danger = true) { confirmLogout = true }
         }
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(20.dp))
 
-        /* --- Tentang --- */
-        SettingsSectionLabel(
-            "Tentang",
-            "Cyronime untuk Android ${BuildConfig.VERSION_NAME} • backend: ${Api.base.removePrefix("https://")}"
-        )
-
-        Spacer(Modifier.height(24.dp))
-
-        /* --- Aksi berbahaya (endpoint sama dengan web) --- */
-        SettingsSectionLabel("Data tontonan", "Hapus history atau reset progress di semua perangkat.")
-        Spacer(Modifier.height(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Box(
-                Modifier
-                    .weight(1f)
-                    .height(44.dp)
-                    .clip(RoundedCornerShape(Cy.RadiusMd))
-                    .background(Cy.Surface)
-                    .clickable { confirmHistory = true },
-                contentAlignment = Alignment.Center
+        /* ---------- Tentang ---------- */
+        SettingsCard {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text("Hapus History", color = Cy.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Box(
+                    Modifier.size(48.dp).clip(RoundedCornerShape(Cy.RadiusMd)).background(Cy.Accent),
+                    contentAlignment = Alignment.Center
+                ) { Text("C", color = Cy.OnMedia, fontSize = 24.sp, fontWeight = FontWeight.Bold) }
+                Column(Modifier.weight(1f)) {
+                    Text("Cyronime", color = Cy.Text, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text(tr("Versi ${BuildConfig.VERSION_NAME}", "Version ${BuildConfig.VERSION_NAME}"),
+                        color = Cy.Text2, fontSize = 13.sp)
+                }
             }
-            Box(
-                Modifier
-                    .weight(1f)
-                    .height(44.dp)
-                    .clip(RoundedCornerShape(Cy.RadiusMd))
-                    .background(Cy.Surface)
-                    .clickable { confirmProgress = true },
-                contentAlignment = Alignment.Center
-            ) {
-                Text("Reset Progress", color = Cy.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            CardDivider()
+            Text(
+                tr(
+                    "Nonton anime & donghua subtitle Indonesia dengan pengalaman tanpa gangguan.",
+                    "Watch anime & donghua with Indonesian subtitles, distraction-free."
+                ),
+                color = Cy.Text2, fontSize = 13.sp, lineHeight = 19.sp,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+            )
+            CardDivider()
+            ActionRow(tr("Kebijakan Privasi", "Privacy Policy"), null, enabled = !busy) {
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://cyronime.web.id/privacy")))
             }
         }
 
-        Spacer(Modifier.height(24.dp))
-        Button(
-            onClick = { confirmLogout = true },
-            modifier = Modifier.fillMaxWidth().height(48.dp)
-        ) {
-            Text("Logout")
+        toast?.let {
+            Spacer(Modifier.height(16.dp))
+            Text(it, color = Cy.Text2, fontSize = 13.sp, textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth())
         }
         Spacer(Modifier.height(32.dp))
     }
 
     if (confirmLogout) {
         ConfirmDialog(
-            title = "Logout dari Cyronime?",
-            text = "History dan favorit Anda tetap tersimpan di akun.",
-            confirmLabel = "Logout",
-            onConfirm = { confirmLogout = false; logout() },
+            title = tr("Keluar dari Cyronime?", "Log out of Cyronime?"),
+            text = tr("Riwayat dan favorit Anda tetap tersimpan di akun.", "Your history and favorites stay saved in your account."),
+            confirmLabel = tr("Logout", "Log out"),
+            onConfirm = {
+                confirmLogout = false
+                io.launch {
+                    busy = true
+                    try {
+                        SettingsActions.logout(context)
+                        withContext(Dispatchers.Main) { onLoggedOut() }
+                    } catch (_: Exception) {
+                        toast = tr("Gagal. Coba lagi.", "Failed. Try again.")
+                    }
+                    busy = false
+                }
+            },
             onDismiss = { confirmLogout = false }
         )
     }
     if (confirmHistory) {
         ConfirmDialog(
-            title = "Hapus semua history?",
-            text = "Riwayat tontonan di akun Anda akan dihapus permanen.",
-            confirmLabel = "Hapus",
+            title = tr("Hapus semua riwayat tontonan?", "Clear all watch history?"),
+            text = tr(
+                "Riwayat episode di akun Anda akan dihapus permanen di semua perangkat. Tindakan ini tidak dapat dibatalkan.",
+                "Episode history in your account will be permanently removed on all devices. This cannot be undone."
+            ),
+            confirmLabel = tr("Hapus", "Clear"),
             onConfirm = {
                 confirmHistory = false
-                io.launch {
-                    try {
-                        deleteAll("history")
-                    } catch (_: Exception) {
-                    }
-                }
+                runBusy({ SettingsActions.clearWatchData(SettingsActions.Kind.History) },
+                    tr("Riwayat tontonan dihapus.", "Watch history cleared."))
             },
             onDismiss = { confirmHistory = false }
         )
     }
     if (confirmProgress) {
         ConfirmDialog(
-            title = "Reset progress tontonan?",
-            text = "Continue watching di semua perangkat akan direset.",
-            confirmLabel = "Reset",
+            title = tr("Reset progress menonton?", "Reset watch progress?"),
+            text = tr(
+                "Posisi tontonan dan Continue watching akan dihapus dari semua perangkat. Tindakan ini tidak dapat dibatalkan.",
+                "Watch positions and Continue watching will be removed from all devices. This cannot be undone."
+            ),
+            confirmLabel = tr("Reset", "Reset"),
             onConfirm = {
                 confirmProgress = false
-                io.launch {
-                    try {
-                        deleteAll("progress")
-                    } catch (_: Exception) {
-                    }
-                }
+                runBusy({ SettingsActions.clearWatchData(SettingsActions.Kind.Progress) },
+                    tr("Progress tontonan direset.", "Watch progress reset."))
             },
             onDismiss = { confirmProgress = false }
         )
     }
 }
 
-/** DELETE history (semua) / progress (?all=1) — endpoint sama dengan web. */
-private suspend fun deleteAll(kind: String) {
-    kotlinx.coroutines.withContext(Dispatchers.IO) {
-        val path = if (kind == "history") "/api/history" else "/api/watch/progress?all=1"
-        val req = Request.Builder()
-            .url(Api.base + path)
-            .header("User-Agent", "Cyronime-Android/" + BuildConfig.VERSION_NAME)
-            .delete()
-            .build()
-        Api.client.newCall(req).execute().use { res ->
-            if (!res.isSuccessful) throw IllegalStateException("HTTP ${res.code}")
-        }
+/* ---------- Komponen kartu ---------- */
+
+/** Kartu pengaturan: surface radius-card, konten bertingkat. */
+@Composable
+private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Cy.RadiusCard))
+            .background(Cy.Surface),
+        content = content
+    )
+}
+
+@Composable
+private fun CardHeader(icon: ImageVector, title: String) {
+    Row(
+        Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Icon(icon, null, tint = Cy.Accent, modifier = Modifier.size(18.dp))
+        Text(title, color = Cy.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
 @Composable
-private fun SettingsSectionLabel(title: String, subtitle: String) {
-    Text(title, color = Cy.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-    Text(subtitle, color = Cy.Text2, fontSize = 12.sp)
+private fun CardDivider() {
+    Box(Modifier.fillMaxWidth().padding(start = 16.dp).height(1.dp).background(Cy.Line))
 }
 
+/** Baris pilihan multi-nilai (tema, aksen, dsb.): segmen pil, klik untuk memilih. */
 @Composable
-private fun PrefToggle(
+private fun <T> ChoiceRow(
     label: String,
-    checked: Boolean,
-    enabled: Boolean,
-    onChange: (Boolean) -> Unit
+    options: List<T>,
+    labelOf: @Composable (T) -> String,
+    selected: (T) -> Boolean,
+    onPick: (T) -> Unit
 ) {
     Row(
-        Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(label, color = Cy.Text, fontSize = 15.sp, modifier = Modifier.weight(1f))
+        if (label.isNotBlank()) {
+            Text(label, color = Cy.Text, fontSize = 15.sp, modifier = Modifier.weight(1f))
+        } else {
+            Spacer(Modifier.weight(1f))
+        }
+        Row(
+            Modifier
+                .clip(RoundedCornerShape(50))
+                .background(Cy.Surface2)
+                .padding(3.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            options.forEach { opt ->
+                val on = selected(opt)
+                Text(
+                    labelOf(opt),
+                    color = if (on) Cy.OnMedia else Cy.Text2,
+                    fontSize = 12.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(if (on) Cy.Accent else Color.Transparent)
+                        .clickable { onPick(opt) }
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                )
+            }
+        }
+    }
+}
+
+/** Baris toggle. */
+@Composable
+private fun SwitchRow(title: String, subtitle: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, color = Cy.Text, fontSize = 15.sp)
+            Text(subtitle, color = Cy.Text2, fontSize = 12.sp)
+        }
+        Spacer(Modifier.width(8.dp))
         Switch(
             checked = checked,
             onCheckedChange = onChange,
-            enabled = enabled,
             colors = SwitchDefaults.colors(
                 checkedTrackColor = Cy.Accent,
-                checkedThumbColor = Cy.Text,
+                checkedThumbColor = Cy.OnMedia,
                 uncheckedTrackColor = Cy.Surface2,
                 uncheckedThumbColor = Cy.Text2
             )
+        )
+    }
+}
+
+/** Baris aksi (klik). */
+@Composable
+private fun ActionRow(title: String, subtitle: String?, enabled: Boolean, danger: Boolean = false, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, color = if (danger) Cy.Peach else Cy.Text, fontSize = 15.sp, fontWeight = if (danger) FontWeight.SemiBold else FontWeight.Normal)
+            subtitle?.let { Text(it, color = Cy.Text2, fontSize = 12.sp) }
+        }
+        Icon(
+            Icons.AutoMirrored.Filled.KeyboardArrowRight, null,
+            tint = Cy.Text2, modifier = Modifier.size(20.dp)
         )
     }
 }
@@ -512,11 +627,11 @@ private fun ConfirmDialog(
         text = { Text(text, color = Cy.Text2, fontSize = 14.sp) },
         confirmButton = {
             TextButton(onClick = onConfirm) {
-                Text(confirmLabel, color = if (confirmLabel == "Logout") Cy.Accent else Cy.Peach)
+                Text(confirmLabel, color = if (confirmLabel == tr("Logout", "Log out")) Cy.Accent else Cy.Peach)
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Batal", color = Cy.Text2) }
+            TextButton(onClick = onDismiss) { Text(tr("Batal", "Cancel"), color = Cy.Text2) }
         }
     )
 }

@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import id.my.id.cyronime.app.BuildConfig
+import id.my.id.cyronime.app.AppSettings
 import id.my.id.cyronime.app.data.Api
 import id.my.id.cyronime.app.data.Favorite
 import id.my.id.cyronime.app.data.HistoryEntry
@@ -86,8 +87,9 @@ fun LibraryScreen(nav: NavController, mode: String) {
 
     LaunchedEffect(mode) { reload() }
 
-    val animeFavRows = remember(animeFav) { animeFav.chunked(3) }
-    val donghuaFavRows = remember(donghuaFav) { donghuaFav.chunked(3) }
+    val cols = AppSettings.gridColumns
+    val animeFavRows = remember(animeFav, cols) { animeFav.chunked(cols) }
+    val donghuaFavRows = remember(donghuaFav, cols) { donghuaFav.chunked(cols) }
 
     when {
         loading -> Column(Modifier.fillMaxSize()) {
@@ -122,7 +124,7 @@ fun LibraryScreen(nav: NavController, mode: String) {
             if (mode == "history") {
                 if (history.isEmpty()) {
                     item {
-                        EmptyPanel("Belum ada riwayat tontonan. Mulai nonton episode untuk mengisi history-mu.")
+                        EmptyPanel(tr("Belum ada riwayat tontonan. Mulai nonton episode untuk mengisi history-mu.", "No watch history yet. Start watching an episode to fill it in."))
                     }
                 } else {
                     items(history, key = { "${it.type}-${it.contentId}" }) { h ->
@@ -132,7 +134,7 @@ fun LibraryScreen(nav: NavController, mode: String) {
             } else {
                 item { SectionTitle("Anime") }
                 if (animeFav.isEmpty()) {
-                    item { EmptyPanel("Belum ada anime favorit. Tambahkan lewat tombol ♥ di halaman detail anime.") }
+                    item { EmptyPanel(tr("Belum ada anime favorit. Tambahkan lewat tombol ♥ di halaman detail anime.", "No favorite anime yet. Add some with the ♥ button on an anime page.")) }
                 } else {
                     items(animeFavRows, key = { it.first().contentId }) { row ->
                         FavoriteRow(row) { f -> nav.navigate("detail/anime/${f.contentId}") }
@@ -140,7 +142,7 @@ fun LibraryScreen(nav: NavController, mode: String) {
                 }
                 item { SectionTitle("Donghua") }
                 if (donghuaFav.isEmpty()) {
-                    item { EmptyPanel("Belum ada donghua favorit. Tambahkan lewat tombol ♥ di halaman detail donghua.") }
+                    item { EmptyPanel(tr("Belum ada donghua favorit. Tambahkan lewat tombol ♥ di halaman detail donghua.", "No favorite donghua yet. Add some with the ♥ button on a donghua page.")) }
                 } else {
                     items(donghuaFavRows, key = { it.first().contentId }) { row ->
                         FavoriteRow(row) { f -> nav.navigate("detail/donghua/${f.contentId}") }
@@ -184,16 +186,16 @@ private fun LibraryHeader(nav: NavController, mode: String, showClear: Boolean, 
                 .clickable { nav.popBackStack() },
             contentAlignment = Alignment.Center
         ) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Kembali", tint = Cy.Text, modifier = Modifier.size(22.dp))
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, tr("Kembali", "Back"), tint = Cy.Text, modifier = Modifier.size(22.dp))
         }
         Text(
-            if (mode == "history") "Watch History" else "Favorites",
+            if (mode == "history") tr("Riwayat Tontonan", "Watch History") else tr("Favorit", "Favorites"),
             color = Cy.Text, fontSize = 18.sp, fontWeight = FontWeight.Bold,
             modifier = Modifier.weight(1f)
         )
         if (showClear) {
             Text(
-                "Hapus",
+                tr("Hapus", "Clear"),
                 color = Cy.Peach, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.clickable { onClear() }
             )
@@ -285,6 +287,6 @@ private fun FavoriteRow(favorites: List<Favorite>, onClick: (Favorite) -> Unit) 
                 )
             }
         }
-        repeat(3 - favorites.size) { Spacer(Modifier.weight(1f)) }
+        repeat(AppSettings.gridColumns - favorites.size) { Spacer(Modifier.weight(1f)) }
     }
 }
