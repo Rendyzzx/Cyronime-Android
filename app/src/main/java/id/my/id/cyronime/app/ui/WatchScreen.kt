@@ -105,6 +105,43 @@ import kotlinx.coroutines.isActive
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WatchScreen(nav: NavController, type: String, id: String) {
+    // Pindah episode (next/prev/auto-next/strip) terjadi DI DALAM layar ini,
+    // bukan lewat nav.navigate. Dulu navigate + popUpTo membuang layar lama:
+    // `fullscreen` hilang (orientasi dipaksa portrait) dan seluruh layar diganti
+    // "Menyiapkan player…". Sekarang `fullscreen` & id aktif hidup di sini,
+    // di luar key(id), sehingga hanya isi episode yang dimuat ulang.
+    var currentId by remember(id) { mutableStateOf(id) }
+    var fullscreenState by remember { mutableStateOf(false) }
+    // Snapshot episode sebelumnya: dipakai sebagai tampilan sementara selama
+    // episode baru dimuat, sehingga hanya area player yang menampilkan loading.
+    var lastAnime by remember { mutableStateOf<AnimeEpisode?>(null) }
+    var lastDonghua by remember { mutableStateOf<DonghuaEpisode?>(null) }
+    androidx.compose.runtime.key(currentId) {
+        WatchScreenBody(
+            nav = nav, type = type, id = currentId,
+            fullscreen = fullscreenState,
+            onFullscreenChange = { fullscreenState = it },
+            onSwitchEpisode = { currentId = it },
+            placeholderAnime = lastAnime,
+            placeholderDonghua = lastDonghua,
+            onLoadedSnapshot = { a, d -> lastAnime = a; lastDonghua = d }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun WatchScreenBody(
+    nav: NavController,
+    type: String,
+    id: String,
+    fullscreen: Boolean,
+    onFullscreenChange: (Boolean) -> Unit,
+    onSwitchEpisode: (String) -> Unit,
+    placeholderAnime: AnimeEpisode? = null,
+    placeholderDonghua: DonghuaEpisode? = null,
+    onLoadedSnapshot: (AnimeEpisode?, DonghuaEpisode?) -> Unit = { _, _ -> }
+) {
     val ctx = LocalContext.current
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -130,7 +167,6 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
     var allFailed by remember { mutableStateOf(false) }
     val failedServers = remember { mutableStateOf(setOf<String>()) }
     var sheetOpen by remember { mutableStateOf(false) }
-    var fullscreen by remember { mutableStateOf(false) }
 
     fun qualityLabel(q: String?): String = when {
         q == null -> "Auto"
@@ -511,6 +547,7 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
                 error = errorMessage(err)
             } finally {
                 loading = false
+                onLoadedSnapshot(anime, donghua)
             }
         }
     }
@@ -534,8 +571,8 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
         }
     }
 
-    val ep = anime
-    val dep = donghua
+    val ep = anime ?: if (loading) placeholderAnime else null
+    val dep = donghua ?: if (loading) placeholderDonghua else null
     val seriesTitle = ep?.animeTitle ?: ep?.title?.substringBefore(" Episode")
         ?: dep?.donghuaTitle ?: dep?.title ?: ""
     val epNumber = epsOf()
@@ -559,10 +596,7 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
      *  sebelum episode baru termuat (server search butuh beberapa detik). */
     fun gotoEpisode(target: String?) {
         if (target.isNullOrBlank()) return
-        Toast.makeText(ctx, "Pindah episode…", Toast.LENGTH_SHORT).show()
-        nav.navigate("watch/$type/$target") {
-            popUpTo("watch/$type/$id") { inclusive = true }
-        }
+        onSwitchEpisode(target)
     }
 
     // Orientasi layar penuh (ala useFullscreenLock web) + mode immersive:
@@ -598,6 +632,12 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
     @Composable
     fun PlayerBox(modifier: Modifier) {
         Box(modifier.background(Color.Black)) {
+            if (loading) {
+                // Loading ala player (bukan layar penuh): spinner di tengah kotak video.
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    androidx.compose.material3.CircularProgressIndicator(color = Color.White)
+                }
+            }
             val url = streamUrl
             if (url != null) {
                 if (streamIsEmbed) {
@@ -656,7 +696,7 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
                             .size(40.dp)
                             .clip(RoundedCornerShape(20.dp))
                             .background(Color(0x99_000000))
-                            .clickable { fullscreen = !fullscreen },
+                            .clickable { onFullscreenChange(!fullscreen) },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -683,8 +723,10 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
                         nav = nav,
                         qualityLabel = qualityLabel(activeQuality),
                         poster = posterForProgress,
+                        isFullscreen = fullscreen,
+                        onSwitchEpisode = onSwitchEpisode,
                         onOpenSettings = { sheetOpen = true },
-                        onFullscreen = { fullscreen = !fullscreen },
+                        onFullscreen = { onFullscreenChange(!fullscreen) },
                         onReady = { onPlaybackReady() },
                         onFatalError = { onPlaybackFatal() }
                     )
@@ -794,8 +836,9 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
         androidx.compose.runtime.movableContentOf<Modifier> { mod -> latestPlayerBox(mod) }
     }
 
+    val hasPlaceholder = placeholderAnime != null || placeholderDonghua != null
     when {
-        loading -> LoadingScreen("Menyiapkan player…")
+        loading && !hasPlaceholder -> LoadingScreen("Menyiapkan player…")
         error != null -> ErrorScreen(error!!, retry = { load() })
         fullscreen -> Box(Modifier.fillMaxSize()) { playerBox(Modifier.fillMaxSize()) }
         else -> Column(Modifier.fillMaxSize()) {
@@ -938,7 +981,7 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
                                         color = if (active) Cy.Text2 else Color.Transparent,
                                         shape = RoundedCornerShape(Cy.RadiusPlayer)
                                     )
-                                    .clickable { nav.navigate("watch/$type/${e.episodeId}") }
+                                    .clickable { onSwitchEpisode(e.episodeId) }
                             ) {
                                 if (watched) Box(Modifier.fillMaxSize().background(Color(0x73_000000)))
                                 Text(
@@ -1061,6 +1104,8 @@ private fun NativePlayer(
     nav: NavController,
     qualityLabel: String,
     poster: String = "",
+    isFullscreen: Boolean = false,
+    onSwitchEpisode: (String) -> Unit = {},
     onOpenSettings: () -> Unit,
     onFullscreen: () -> Unit,
     onReady: () -> Unit,
@@ -1075,7 +1120,6 @@ private fun NativePlayer(
     var controlsVisible by remember { mutableStateOf(true) }
     var spin by remember { mutableStateOf(true) }
     var skipFlash by remember { mutableStateOf<String?>(null) }
-    var isFullscreen by remember { mutableStateOf(false) }
     var controlsShownAt by remember { mutableStateOf(0L) }
     var resumeDone by remember { mutableStateOf(false) }
     val io = rememberIoScope()
@@ -1145,7 +1189,7 @@ private fun NativePlayer(
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == Player.STATE_ENDED && AppSettings.autoPlayNext && nextId != null) {
                     // Putar Episode Berikutnya: pola navigasi sama dengan tombol Next.
-                    nav.navigate("watch/$type/$nextId") { popUpTo("watch/$type/$id") { inclusive = true } }
+                    onSwitchEpisode(nextId)
                 }
                 if (state == Player.STATE_READY) { spin = false; onReady() }
                 if (state == Player.STATE_BUFFERING && playing) spin = true
@@ -1359,8 +1403,7 @@ private fun NativePlayer(
                     SmallPlayerButton(
                         Icons.Filled.SkipPrevious, enabled = prevId != null
                     ) {
-                        Toast.makeText(context, "Pindah episode…", Toast.LENGTH_SHORT).show()
-                        nav.navigate("watch/$type/$prevId") { popUpTo("watch/$type/$id") { inclusive = true } }
+                        prevId?.let(onSwitchEpisode)
                     }
                     SmallPlayerButton(Icons.Filled.Replay10) { skip(-10) }
                     Box(
@@ -1381,8 +1424,7 @@ private fun NativePlayer(
                     SmallPlayerButton(
                         Icons.Filled.SkipNext, enabled = nextId != null
                     ) {
-                        Toast.makeText(context, "Pindah episode…", Toast.LENGTH_SHORT).show()
-                        nav.navigate("watch/$type/$nextId") { popUpTo("watch/$type/$id") { inclusive = true } }
+                        nextId?.let(onSwitchEpisode)
                     }
                 }
                 Spacer(Modifier.height(6.dp))
@@ -1411,7 +1453,7 @@ private fun NativePlayer(
                                 .size(36.dp)
                                 .clip(RoundedCornerShape(Cy.RadiusChip))
                                 .background(Color(0x1A_FEFDFF))
-                                .clickable { isFullscreen = !isFullscreen; onFullscreen() },
+                                .clickable { onFullscreen() },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
