@@ -84,6 +84,8 @@ import id.my.id.cyronime.app.data.AnimeEpisode
 import id.my.id.cyronime.app.data.AnimeServerOption
 import id.my.id.cyronime.app.data.Api
 import id.my.id.cyronime.app.data.DonghuaEpisode
+import id.my.id.cyronime.app.data.DonghuaStreamServer
+import id.my.id.cyronime.app.data.EmbedExtractor
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -203,11 +205,82 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
         }
     }
 
-    fun useDonghuaServer(name: String, url: String) {
+    fun useDonghuaServer(name: String, url: String, skipExtraction: Boolean = false) {
         activeQuality = null
         activeServerKey = name
-        streamUrl = url
-        streamIsEmbed = !isDirectVideo(url)
+        // Direct file sejak awal -> langsung ExoPlayer.
+        if (isDirectVideo(url)) {
+            streamUrl = url
+            streamIsEmbed = false
+            return
+        }
+        // FIX "donghua tidak ada video": episode donghua hanya punya URL EMBED
+        // (VidHide/StreamRuby/Doodstream/...). Dulu semua dilempar ke WebView,
+        // yang di Android sering layar hitam (iklan/popup/host menolak wv).
+        // Sekarang sama seperti anime: coba ekstraksi direct file (m3u8/mp4)
+        // DI HP via EmbedExtractor (token CDN terikat ASN/IP peminta), lalu
+        // ExoPlayer native. Gagal -> WebView embed seperti dulu.
+        if (skipExtraction) {
+            streamUrl = url
+            streamIsEmbed = true
+            return
+        }
+        statusMessage = "Memuat $name…"
+        resolving = true
+        io.launch {
+            try {
+                val direct = Api.extractDonghuaStream(url)
+                if (direct != null && isDirectVideo(direct.url)) {
+                    streamUrl = direct.url
+                    streamIsEmbed = false
+                    streamReferer = direct.referer
+                } else {
+                    streamUrl = url
+                    streamIsEmbed = true
+                }
+                allFailed = false
+            } catch (_: Exception) {
+                streamUrl = url
+                streamIsEmbed = true
+            } finally {
+                resolving = false
+            }
+        }
+    }
+
+    /**
+     * Pilih server donghua pertama yang bisa diputar NATIVE: coba ekstraksi
+     * urut (VidHide dkk — host yang dikenal bisa diekstrak), server yang
+     * tidak bisa dilewati (mis. terenkripsi) tanpa menandainya gagal.
+     * Semua gagal -> server pertama via WebView (perilaku lama).
+     */
+    fun pickDonghuaServer(servers: List<DonghuaStreamServer>) {
+        val first = servers.firstOrNull() ?: run { allFailed = true; return }
+        val candidates = servers.filter { EmbedExtractor.isExtractable(it.url) }
+        val ordered = (candidates + servers.filter { it !in candidates }).distinctBy { it.name }
+        statusMessage = "Mencari server terbaik…"
+        resolving = true
+        io.launch {
+            try {
+                for (srv in ordered) {
+                    activeServerKey = srv.name
+                    val direct = try { Api.extractDonghuaStream(srv.url) } catch (_: Exception) { null }
+                    if (direct != null && isDirectVideo(direct.url)) {
+                        activeQuality = null
+                        streamUrl = direct.url
+                        streamIsEmbed = false
+                        streamReferer = direct.referer
+                        allFailed = false
+                        return@launch
+                    }
+                }
+                // Tidak ada yang bisa native -> server pertama lewat WebView.
+                useDonghuaServer(first.name, first.url, skipExtraction = true)
+            } finally {
+                resolving = false
+                if (streamUrl != null) statusMessage = null
+            }
+        }
     }
 
     /** Dipanggil NativePlayer saat frame pertama siap: hapus pil "Mencoba…". */
@@ -278,9 +351,8 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
                 } else {
                     val ep = Api.donghuaEpisode(id)
                     donghua = ep
-                    val first = ep.servers.firstOrNull()
-                    if (first != null) {
-                        useDonghuaServer(first.name, first.url)
+                    if (ep.servers.isNotEmpty()) {
+                        pickDonghuaServer(ep.servers)
                     } else {
                         error = "Tidak ada server streaming untuk episode ini."
                     }

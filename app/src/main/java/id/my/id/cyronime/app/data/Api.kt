@@ -358,6 +358,19 @@ object Api {
      * (AWS) ditolak CDN dengan 403 saat diputar dari HP. Backend hanya jadi
      * cadangan bila ekstraksi lokal gagal. null -> pemanggil pakai WebView.
      */
+    /**
+     * Ekstraksi direct file untuk server donghua (URL embed langsung dari
+     * backend, tanpa serverId). Selalu DI HP (token CDN terikat ASN/IP);
+     * backend tidak punya endpoint resolve untuk donghua.
+     * null -> pemanggil pakai WebView embed.
+     */
+    suspend fun extractDonghuaStream(embedUrl: String): ExtractedStream? {
+        if (!EmbedExtractor.isExtractable(embedUrl)) return null
+        return withContext(Dispatchers.IO) {
+            EmbedExtractor.extract(embedUrl)?.let { ExtractedStream(it.url, it.type, it.host, it.referer) }
+        }
+    }
+
     suspend fun extractStream(embedUrl: String, serverId: String): ExtractedStream? {
         if (!EmbedExtractor.isExtractable(embedUrl)) return null
         val local = withContext(Dispatchers.IO) { EmbedExtractor.extract(embedUrl) }
