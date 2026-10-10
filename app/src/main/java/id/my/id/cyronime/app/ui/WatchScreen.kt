@@ -104,6 +104,9 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
     var error by remember { mutableStateOf<String?>(null) }
     var anime by remember { mutableStateOf<AnimeEpisode?>(null) }
     var donghua by remember { mutableStateOf<DonghuaEpisode?>(null) }
+    // Urutan slug episode donghua (dari detail judul) — cadangan prev/next
+    // bila server tidak mengirim prevEpisodeSlug/nextEpisodeSlug.
+    var donghuaSlugs by remember { mutableStateOf<List<String>>(emptyList()) }
     var favorite by remember { mutableStateOf(false) }
 
     // Sumber aktif
@@ -351,6 +354,17 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
                 } else {
                     val ep = Api.donghuaEpisode(id)
                     donghua = ep
+                    // Cadangan navigasi: muat daftar episode judul ini (best-effort).
+                    val titleSlug = ep.donghuaSlug
+                    if (!titleSlug.isNullOrBlank()) {
+                        io.launch {
+                            try {
+                                donghuaSlugs = Api.donghuaDetail(titleSlug).episodes
+                                    .sortedBy { it.episodeNumber ?: Int.MAX_VALUE }
+                                    .map { it.slug }
+                            } catch (_: Exception) { }
+                        }
+                    }
                     if (ep.servers.isNotEmpty()) {
                         pickDonghuaServer(ep.servers)
                     } else {
@@ -395,8 +409,17 @@ fun WatchScreen(nav: NavController, type: String, id: String) {
         ?: dep?.donghuaTitle ?: dep?.title ?: ""
     val epNumber = epsOf()
     val shortLabel = if (epNumber != null) "Episode $epNumber" else (ep?.title ?: dep?.title ?: "")
-    val prevId = ep?.prevEpisodeId ?: dep?.prevEpisodeSlug
-    val nextId = ep?.nextEpisodeId ?: dep?.nextEpisodeSlug
+    // Prioritas: nilai dari server; kalau kosong, cari tetangga di daftar
+    // episode (anime: episodeList berurut naik; donghua: slug dari detail).
+    val orderedIds: List<String> = when {
+        ep != null -> ep.episodeList.sortedBy { it.eps ?: Int.MAX_VALUE }.map { it.episodeId }
+        else -> donghuaSlugs
+    }
+    val curIdx = orderedIds.indexOf(id)
+    val prevId = (ep?.prevEpisodeId ?: dep?.prevEpisodeSlug)?.takeIf { it.isNotBlank() }
+        ?: orderedIds.getOrNull(curIdx - 1).takeIf { curIdx > 0 }
+    val nextId = (ep?.nextEpisodeId ?: dep?.nextEpisodeSlug)?.takeIf { it.isNotBlank() }
+        ?: orderedIds.getOrNull(curIdx + 1).takeIf { curIdx >= 0 }
     val contentId = ep?.animeId ?: dep?.donghuaSlug ?: ""
 
     // Orientasi layar penuh (ala useFullscreenLock web) + mode immersive:
